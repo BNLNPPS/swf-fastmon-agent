@@ -29,6 +29,7 @@ class DatabaseManager:
     def _get_database_url_from_env(self) -> str:
         """
         Constructs the database URL from environment variables
+        Defaults are configured for Docker Compose setup
 
         :return: URL string for the connection to the PostgreSQL database
         """
@@ -36,7 +37,7 @@ class DatabaseManager:
         port = os.getenv('POSTGRES_PORT', '5432')
         database = os.getenv('POSTGRES_DB', 'swf_fastmonitoring')
         user = os.getenv('POSTGRES_USER', 'postgres')
-        password = os.getenv('POSTGRES_PASSWORD', '')
+        password = os.getenv('POSTGRES_PASSWORD', 'postgres')
         
         return f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
