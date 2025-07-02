@@ -34,7 +34,7 @@ class StfFile(Base):
     
     file_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id = Column(Integer, ForeignKey('runs.run_id'), nullable=False)
-    stf_identifier = Column(BigInteger, nullable=False)
+    machine_state = Column(String(64), nullable=False, default="physics")
     file_url = Column(String(1024), unique=True, nullable=False)
     file_size_bytes = Column(BigInteger)
     checksum = Column(String(64))
