@@ -1,0 +1,64 @@
+# Generated with Gemini Pro 2.5
+# Prompt: Suggest me a .gitignore file for a Python project. It will contain files for running agents, connect to PostgreSQL databases, use ActiveMQ. Include files for PyCharm IDE
+
+# PyCharm IDE
+.idea/
+*.iws
+shelf/
+
+# Python Byte-compiled / Optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# PostgreSQL
+.pgpass
+*.log
+
+# ActiveMQ
+activemq.log
+kahadb/
+
+# Agent & secrets files
+secrets.yaml
+credentials.json
+config.ini
+*.session
