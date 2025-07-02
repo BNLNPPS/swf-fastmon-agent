@@ -1,69 +1,75 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, ForeignKey, BigInteger, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMPTZ
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-import enum
+from django.db import models
 import uuid
 
-Base = declarative_base()
+
+class FileStatus(models.TextChoices):
+    REGISTERED = "registered", "Registered"
+    PROCESSING = "processing", "Processing"
+    PROCESSED = "processed", "Processed"
+    FAILED = "failed", "Failed"
+    SENT_TO_MQ = "sent_to_mq", "Sent to MQ"
 
 
-class FileStatus(enum.Enum):
-    registered = "registered"
-    processing = "processing"
-    processed = "processed"
-    failed = "failed"
-    sent_to_mq = "sent_to_mq"
+class Run(models.Model):
+    run_id = models.AutoField(primary_key=True)
+    run_number = models.IntegerField(unique=True)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField(null=True, blank=True)
+    run_conditions = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'runs'
+
+    def __str__(self):
+        return f"Run {self.run_number}"
 
 
-class Run(Base):
-    __tablename__ = 'runs'
-    
-    run_id = Column(Integer, primary_key=True, autoincrement=True)
-    run_number = Column(Integer, unique=True, nullable=False)
-    start_time = Column(TIMESTAMPTZ, nullable=False)
-    end_time = Column(TIMESTAMPTZ)
-    run_conditions = Column(JSONB)
-    
-    stf_files = relationship("StfFile", back_populates="run")
+class StfFile(models.Model):
+    file_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(Run, on_delete=models.CASCADE, related_name='stf_files')
+    machine_state = models.CharField(max_length=64, default="physics")
+    file_url = models.URLField(max_length=1024, unique=True)
+    file_size_bytes = models.BigIntegerField(null=True, blank=True)
+    checksum = models.CharField(max_length=64, null=True, blank=True)
+    creation_time = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(
+        max_length=20,
+        choices=FileStatus.choices,
+        default=FileStatus.REGISTERED
+    )
+    metadata = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'stf_files'
+
+    def __str__(self):
+        return f"STF File {self.file_id}"
 
 
-class StfFile(Base):
-    __tablename__ = 'stf_files'
-    
-    file_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    run_id = Column(Integer, ForeignKey('runs.run_id'), nullable=False)
-    machine_state = Column(String(64), nullable=False, default="physics")
-    file_url = Column(String(1024), unique=True, nullable=False)
-    file_size_bytes = Column(BigInteger)
-    checksum = Column(String(64))
-    creation_time = Column(TIMESTAMPTZ, default=func.current_timestamp())
-    status = Column(SQLEnum(FileStatus), nullable=False, default=FileStatus.registered)
-    metadata = Column(JSONB)
-    
-    run = relationship("Run", back_populates="stf_files")
-    dispatches = relationship("MessageQueueDispatch", back_populates="stf_file")
+class Subscriber(models.Model):
+    subscriber_id = models.AutoField(primary_key=True)
+    subscriber_name = models.CharField(max_length=255, unique=True)
+    fraction = models.FloatField(null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'subscribers'
+
+    def __str__(self):
+        return self.subscriber_name
 
 
-class Subscriber(Base):
-    __tablename__ = 'subscribers'
-    
-    subscriber_id = Column(Integer, primary_key=True, autoincrement=True)
-    subscriber_name = Column(String(255), unique=True, nullable=False)
-    fraction = Column(Float)
-    description = Column(Text)
-    is_active = Column(Boolean, default=True)
+class MessageQueueDispatch(models.Model):
+    dispatch_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stf_file = models.ForeignKey(StfFile, on_delete=models.CASCADE, related_name='dispatches')
+    dispatch_time = models.DateTimeField(auto_now_add=True)
+    message_content = models.JSONField(null=True, blank=True)
+    is_successful = models.BooleanField()
+    error_message = models.TextField(null=True, blank=True)
 
+    class Meta:
+        db_table = 'message_queue_dispatches'
 
-class MessageQueueDispatch(Base):
-    __tablename__ = 'message_queue_dispatches'
-    
-    dispatch_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    file_id = Column(UUID(as_uuid=True), ForeignKey('stf_files.file_id'), nullable=False)
-    dispatch_time = Column(TIMESTAMPTZ, nullable=False, default=func.current_timestamp())
-    message_content = Column(JSONB)
-    is_successful = Column(Boolean, nullable=False)
-    error_message = Column(Text)
-    
-    stf_file = relationship("StfFile", back_populates="dispatches")
+    def __str__(self):
+        return f"Dispatch {self.dispatch_id}"

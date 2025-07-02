@@ -1,4 +1,6 @@
 from .database import DatabaseManager
-from .models import Base, StfFile, Run, Subscriber, MessageQueueDispatch, FileStatus
+from .models import StfFile, Run, Subscriber, MessageQueueDispatch, FileStatus
 
-__all__ = ["DatabaseManager", "Base", "StfFile", "Run", "Subscriber", "MessageQueueDispatch", "FileStatus"]
+default_app_config = 'swf_fastmon_agent.database.apps.DatabaseConfig'
+
+__all__ = ["DatabaseManager", "StfFile", "Run", "Subscriber", "MessageQueueDispatch", "FileStatus"]

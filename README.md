@@ -1,6 +1,6 @@
 # SWF Fast Monitoring Agent
 
-A Python library for PostgreSQL communication and STF (Super Time Frame) file metadata management as part of the ePIC streaming workflow testbed ecosystem.
+A Django-based Python library for PostgreSQL communication and STF (Super Time Frame) file metadata management as part of the ePIC streaming workflow testbed ecosystem.
 
 ## Quick Start with Docker
 
@@ -26,9 +26,9 @@ cp .env.example .env
 ### 3. Initialize Database Schema
 ```bash
 # Install dependencies (if not already done)
-pip install sqlalchemy psycopg2-binary
+pip install django psycopg2-binary
 
-# Create database tables
+# Create database tables using Django migrations
 python setup_db.py
 ```
 
@@ -89,9 +89,9 @@ The library uses environment variables for database configuration:
 
 ## Library Components
 
-- **`DatabaseManager`**: Main class for database operations
-- **SQLAlchemy Models**: `Run`, `StfFile`, `Subscriber`, `MessageQueueDispatch`
-- **`FileStatus` Enum**: File processing status tracking
+- **`DatabaseManager`**: Main class for database operations using Django ORM
+- **Django Models**: `Run`, `StfFile`, `Subscriber`, `MessageQueueDispatch`
+- **`FileStatus` Choices**: File processing status tracking using Django TextChoices
 
 ## Development
 
