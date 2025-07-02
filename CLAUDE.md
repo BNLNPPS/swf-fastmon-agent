@@ -20,42 +20,57 @@ The project is designed to work with PostgreSQL databases and ActiveMQ messaging
 
 ## Project Structure
 
-The main source code is located in:
+The project has been converted to Django framework:
 ```
 src/swf_fastmon_agent/
 ├── __init__.py          # Package initialization
-├── models.py            # SQLAlchemy database models
-└── database.py          # Database connection and operations
+└── database/            # Django app for database management
+    ├── __init__.py
+    ├── apps.py          # Django app configuration
+    ├── database.py      # Database utilities and operations
+    ├── models.py        # Django ORM models
+    ├── settings.py      # Django settings configuration
+    └── migrations/      # Database migrations
+        └── __init__.py
+```
+
+Additional project files:
+```
+├── manage.py            # Django management script
+├── requirements.txt     # Python dependencies
+└── setup_db.py         # Database setup utility
 ```
 
 ### Core Library Components
 
-- **`models.py`**: SQLAlchemy ORM models implementing the database schema:
-  - `Run` - Data-taking run information
-  - `StfFile` - Super Time Frame file metadata
-  - `Subscriber` - Message queue subscribers
-  - `MessageQueueDispatch` - Message dispatch logging
-  - `FileStatus` - Enum for file processing status
+- **`models.py`**: Django ORM models implementing the database schema:
+  - `Run` - Data-taking run information with auto-incrementing ID
+  - `StfFile` - Super Time Frame file metadata with UUID primary key
+  - `Subscriber` - Message queue subscribers with fraction-based dispatch
+  - `MessageQueueDispatch` - Message dispatch logging with success tracking
+  - `FileStatus` - Django TextChoices enum for file processing status
 
-- **`database.py`**: Database management layer:
-  - `DatabaseManager` class with connection pooling
-  - Methods for inserting and reading STF file metadata
-  - Context manager for safe database sessions
-  - Environment-based configuration support
+- **`database.py`**: Database utilities and operations layer (implementation details TBD)
+- **`settings.py`**: Django configuration for the database app
+- **`manage.py`**: Django's command-line utility for administrative tasks
 
 ## Dependencies and External Systems
 
 This project integrates with:
-- **PostgreSQL**: Database operations using SQLAlchemy ORM (credentials in `.pgpass`, logs excluded)
+- **PostgreSQL**: Database operations using Django ORM (credentials in `.pgpass`, logs excluded)
 - **ActiveMQ**: Message queuing system (logs and kahadb excluded)
 - **Agent framework**: Secrets/credentials managed through `secrets.yaml`, `credentials.json`, `config.ini`
 
 ### Python Dependencies
-- **SQLAlchemy**: ORM for database operations
-- **psycopg2** (implied): PostgreSQL adapter for Python
+- **Django**: Web framework with ORM for database operations (>=4.2, <5.0)
+- **psycopg2-binary**: PostgreSQL adapter for Python (>=2.9.0)
+- **pytest**: Testing framework (>=7.0.0)
+- **pytest-django**: Django testing integration (>=4.5.0)
+- **black**: Code formatter (>=22.0.0)
+- **flake8**: Code linter (>=4.0.0)
 
 ### Database Environment Variables
-The `DatabaseManager` supports the following environment variables:
+Django settings support standard environment variables:
 - `POSTGRES_HOST` (default: localhost)
 - `POSTGRES_PORT` (default: 5432)
 - `POSTGRES_DB` (default: epic_monitoring)
@@ -70,7 +85,22 @@ The `DatabaseManager` supports the following environment variables:
 
 ## Development Commands
 
-Since this is an early-stage project with no package configuration files yet, standard Python development commands will need to be established once the project structure is implemented.
+With Django framework in place, use these standard commands:
+
+### Django Management
+- `python manage.py runserver` - Start development server
+- `python manage.py makemigrations` - Create database migrations
+- `python manage.py migrate` - Apply database migrations
+- `python manage.py shell` - Django interactive shell
+- `python manage.py dbshell` - Database shell
+
+### Testing and Code Quality
+- `pytest` - Run tests
+- `black .` - Format code
+- `flake8 .` - Lint code
+
+### Database Setup
+- `python setup_db.py` - Custom database setup utility
 
 ## Related Projects
 

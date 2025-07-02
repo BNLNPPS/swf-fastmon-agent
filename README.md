@@ -1,6 +1,15 @@
 # SWF Fast Monitoring Agent
 
-A Django-based Python library for PostgreSQL communication and STF (Super Time Frame) file metadata management as part of the ePIC streaming workflow testbed ecosystem.
+**`swf-fastmon-agent`** is a fast monitoring service for the ePIC streaming workflow testbed. 
+
+It pulls metadata from Super Time Frame (STF) files and distribute the information via message queues, allowing remote monitoring of the ePIC data acquisition.
+
+## Architecture Overview
+
+The agent is designed to distribute metadata with and ActiveMQ messaging systems, bookkeeping activity with a PostgreSQL database.
+
+
+-------------- 
 
 ## Quick Start with Docker
 
@@ -23,35 +32,54 @@ docker-compose ps
 cp .env.example .env
 ```
 
-### 3. Initialize Database Schema
+### 3. Install Dependencies
 ```bash
-# Install dependencies (if not already done)
-pip install django psycopg2-binary
+# Install Python dependencies
+pip install -r requirements.txt
+```
 
-# Create database tables using Django migrations
+### 4. Initialize Database Schema
+```bash
+# Create and apply Django migrations
+python manage.py makemigrations
+python manage.py migrate
+
+# Or use the custom setup script
 python setup_db.py
 ```
 
-### 4. Use the Library
+### 5. Use the Django Models
 ```python
-from swf_fastmon_agent import DatabaseManager, FileStatus
+import django
+import os
 
-# Create database manager (uses environment variables)
-db = DatabaseManager()
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'swf_fastmon_agent.database.settings')
+django.setup()
 
-# Insert STF file metadata
-file_id = db.insert_stf_file(
-    run_id=1,
+from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
+
+# Create a run
+run = Run.objects.create(
+    run_number=1001,
+    start_time="2024-01-15T10:00:00Z",
+    run_conditions={"beam_energy": "18GeV", "detector": "ePIC"}
+)
+
+# Create STF file metadata
+stf_file = StfFile.objects.create(
+    run=run,
     machine_state="physics",
     file_url="https://example.com/stf/file123.root",
     file_size_bytes=1024000,
     checksum="abc123def456",
+    status=FileStatus.REGISTERED,
     metadata={"detector": "ePIC", "beam_energy": "18GeV"}
 )
 
 # Retrieve file metadata
-metadata = db.get_stf_file_metadata(file_id)
-print(metadata)
+files = StfFile.objects.filter(run=run)
+print(f"Found {files.count()} files for run {run.run_number}")
 ```
 
 ## Database Management
@@ -89,10 +117,33 @@ The library uses environment variables for database configuration:
 
 ## Library Components
 
-- **`DatabaseManager`**: Main class for database operations using Django ORM
-- **Django Models**: `Run`, `StfFile`, `Subscriber`, `MessageQueueDispatch`
-- **`FileStatus` Choices**: File processing status tracking using Django TextChoices
+- **Django Models**: Core data models for the monitoring system
+  - `Run`: Data-taking run information with auto-incrementing ID
+  - `StfFile`: Super Time Frame file metadata with UUID primary key
+  - `Subscriber`: Message queue subscribers with fraction-based dispatch
+  - `MessageQueueDispatch`: Message dispatch logging with success tracking
+  - `FileStatus`: Django TextChoices enum for file processing status
+- **Django Management**: Standard Django commands for database operations
+- **Database Utilities**: Custom database setup and operations (in `database.py`)
 
-## Development
+## Development Commands
 
-This library follows the ePIC streaming workflow testbed development guidelines for portability, maintainability, and consistency across the ecosystem.
+### Django Management
+```bash
+python manage.py runserver      # Start development server
+python manage.py makemigrations # Create database migrations
+python manage.py migrate        # Apply database migrations
+python manage.py shell          # Django interactive shell
+python manage.py dbshell        # Database shell
+```
+
+### Testing and Code Quality
+```bash
+pytest          # Run tests
+black .         # Format code
+flake8 .        # Lint code
+```
+
+## Development Guidelines
+
+This library follows the ePIC streaming workflow testbed development guidelines for portability, maintainability, and consistency across the ecosystem. See `CLAUDE.md` for detailed development guidelines and project-specific conventions.
