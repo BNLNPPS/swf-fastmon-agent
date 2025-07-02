@@ -40,6 +40,8 @@ pip install -r requirements.txt
 
 ### 4. Initialize Database Schema
 ```bash
+python manage.py runserver
+
 # Create and apply Django migrations
 python manage.py makemigrations
 python manage.py migrate
