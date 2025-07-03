@@ -19,7 +19,7 @@ Enum file_status {
   processing
   processed
   failed
-  sent_to_mq
+  done
 }
 
 // Stores information about data-taking runs. Each run gathers multiple STF files.
