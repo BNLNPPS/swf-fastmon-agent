@@ -40,11 +40,8 @@ python manage.py migrate
 # Create new migrations
 python manage.py makemigrations
 
-# Database shell
-python manage.py dbshell
-
-# Django shell
-python manage.py shell
+# Run tests 
+python manage.py test swf_fastmon_agent
 ```
 
 ## Usage Context
