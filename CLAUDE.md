@@ -24,6 +24,10 @@ The project has been converted to Django framework with modern packaging:
 ```
 src/swf_fastmon_agent/
 ├── __init__.py          # Package initialization
+├── agents/              # Agent implementations
+│   ├── __init__.py
+│   ├── file_monitor.py  # File monitoring agent
+│   └── supervisord_example.conf  # Supervisord configuration example
 └── database/            # Django app for database management
     ├── __init__.py
     ├── apps.py          # Django app configuration
@@ -59,6 +63,16 @@ Additional project files:
 - **`database.py`**: Database utilities and operations layer (implementation details TBD)
 - **`settings.py`**: Django configuration for the database app
 - **`manage.py`**: Django's command-line utility for administrative tasks
+
+### Agent Components
+
+- **`agents/file_monitor.py`**: File monitoring agent that:
+  - Monitors specified directories for newly created STF files
+  - Applies time-based filtering (files created within X minutes)
+  - Randomly selects a configurable fraction of discovered files
+  - Records selected files in the database with metadata
+  - Designed for continuous operation under supervisord
+  - Supports environment variable configuration for deployment flexibility
 
 ## Dependencies and External Systems
 
@@ -111,6 +125,15 @@ With Django framework in place, use these standard commands:
 ### Database Setup
 - `python setup_db.py` - Custom database setup utility
 
+### Agent Operations
+- `python -m swf_fastmon_agent.agents.file_monitor` - Run file monitoring agent
+- Configure via environment variables:
+  - `FASTMON_WATCH_DIRS` - Comma-separated directories to monitor
+  - `FASTMON_FRACTION` - Fraction of files to select (0.0-1.0)
+  - `FASTMON_INTERVAL` - Check interval in seconds
+  - `FASTMON_LOOKBACK` - Lookback time in minutes
+- Use `src/swf_fastmon_agent/agents/supervisord_example.conf` for supervisord deployment
+
 ## Related Projects
 
 This agent is part of a multi-module scientific workflow system. Dependencies on `swf-testbed`, `swf-monitor`, and `swf-daqsim-agent` suggest coordination with other components in the ecosystem.
@@ -123,6 +146,7 @@ This agent is part of a multi-module scientific workflow system. Dependencies on
 
 ### General Guidelines
 
+- **Do not delete anything added by a human without explicit approval!!**
 - **Adhere to established standards and conventions.** When implementing new features, prioritize the use of established standards, conventions, and naming schemes provided by the programming language, frameworks, or widely-used libraries. Avoid introducing custom terminology or patterns when a standard equivalent exists.
 - **Portability is paramount.** All code must work across different platforms (macOS, Linux, Windows), Python installations (system, homebrew, pyenv, etc.), and deployment environments (Docker, local, cloud). Never hardcode absolute paths, assume specific installation directories, or rely on system-specific process names or command locations. Use relative paths, environment variables, and standard tools rather than platform-specific process detection. When in doubt, choose the more portable solution.
 - **Favor Simplicity and Maintainability.** Strive for clean, simple, and maintainable solutions. When faced with multiple implementation options, recommend the one that is easiest to understand, modify, and debug. Avoid overly complex or clever code that might be difficult for others (or your future self) to comprehend. Adhere to the principle of "Keep It Simple, Stupid" (KISS).
