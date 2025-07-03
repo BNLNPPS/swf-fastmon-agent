@@ -10,6 +10,7 @@ license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 dependencies = [
     "Django>=4.2,<5.0",
+    "psycopg>=3.2.0",
     "psycopg2-binary>=2.9.0",
     # This is a dependency from our other local package
     #"swf-common-lib",
@@ -32,7 +33,7 @@ test = [
     "pytest-cov>=4.0.0",
 ]
 [project.urls]
-Repository = "https://github.com/eic/swf-fastmon-agent"
+Repository = "https://github.com/BNLNPPS/swf-fastmon-agent/"
 [tool.setuptools]
 package-dir = {"" = "src"}
 [tool.setuptools.packages.find]

@@ -132,7 +132,7 @@ class MessageQueueDispatch(models.Model):
     stf_file = models.ForeignKey(StfFile, on_delete=models.CASCADE, related_name='dispatches')
     dispatch_time = models.DateTimeField(auto_now_add=True)
     message_content = models.JSONField(null=True, blank=True)
-    is_successful = models.BooleanField()
+    is_successful = models.BooleanField(null=True, default=None)
     error_message = models.TextField(null=True, blank=True)
 
     class Meta:

@@ -41,7 +41,7 @@ class DatabaseManager:
                 SECRET_KEY='dev-key-for-database-operations',
             )
             django.setup()
-    
+
     def create_tables(self):
         """
         Creates all tables in the database based on the defined models.
@@ -50,7 +50,7 @@ class DatabaseManager:
         from django.core.management import call_command
         call_command('migrate', verbosity=0)
         logger.info("Database tables created successfully!")
-    
+
     def insert_stf_file(self, run_id: int, machine_state: str, file_url: str,
                        file_size_bytes: Optional[int] = None, checksum: Optional[str] = None,
                        status: str = FileStatus.REGISTERED, metadata: Optional[Dict[str, Any]] = None) -> str:
@@ -113,7 +113,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error retrieving STF file metadata: {e}")
             raise
-    
+
     def get_stf_files_by_run(self, run_id: int) -> List[Dict[str, Any]]:
         """
         Retrieves all STF files associated with a specific run ID
