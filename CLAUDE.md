@@ -20,7 +20,7 @@ The project is designed to work with PostgreSQL databases and ActiveMQ messaging
 
 ## Project Structure
 
-The project has been converted to Django framework:
+The project has been converted to Django framework with modern packaging:
 ```
 src/swf_fastmon_agent/
 ├── __init__.py          # Package initialization
@@ -28,16 +28,22 @@ src/swf_fastmon_agent/
     ├── __init__.py
     ├── apps.py          # Django app configuration
     ├── database.py      # Database utilities and operations
-    ├── models.py        # Django ORM models
+    ├── models.py        # Django ORM models (with docstrings)
     ├── settings.py      # Django settings configuration
-    └── migrations/      # Database migrations
-        └── __init__.py
+    ├── migrations/      # Database migrations
+    │   ├── 0001_initial.py
+    │   ├── 0002_alter_stffile_status.py
+    │   └── __init__.py
+    └── tests/           # Test suite
+        ├── __init__.py
+        └── test_database.py
 ```
 
 Additional project files:
 ```
 ├── manage.py            # Django management script
 ├── requirements.txt     # Python dependencies
+├── pyproject.toml       # Modern Python packaging configuration
 └── setup_db.py         # Database setup utility
 ```
 
@@ -63,7 +69,8 @@ This project integrates with:
 
 ### Python Dependencies
 - **Django**: Web framework with ORM for database operations (>=4.2, <5.0)
-- **psycopg2-binary**: PostgreSQL adapter for Python (>=2.9.0)
+- **psycopg**: Modern PostgreSQL adapter for Python (>=3.2.0)
+- **psycopg2-binary**: Legacy PostgreSQL adapter for Python (>=2.9.0)
 - **pytest**: Testing framework (>=7.0.0)
 - **pytest-django**: Django testing integration (>=4.5.0)
 - **black**: Code formatter (>=22.0.0)
@@ -95,7 +102,9 @@ With Django framework in place, use these standard commands:
 - `python manage.py dbshell` - Database shell
 
 ### Testing and Code Quality
-- `pytest` - Run tests
+- `python manage.py test` - Run Django tests
+- `python manage.py test swf_fastmon_agent` - Run specific app tests
+- `pytest` - Run tests (alternative with pytest-django)
 - `black .` - Format code
 - `flake8 .` - Lint code
 
