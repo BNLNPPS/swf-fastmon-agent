@@ -4,6 +4,7 @@ File Monitor Agent for SWF Fast Monitoring System.
 
 This agent monitors DAQ directories for newly created STF files, selects a fraction
 of them based on configuration, and records them in the fast monitoring database.
+
 Designed to run continuously under supervisord.
 """
 
@@ -19,12 +20,6 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 import django
-from django.core.management import setup_environ
-from django.conf import settings
-
-# Add the project root to Python path
-project_root = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
 
 # Configure Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'swf_fastmon_agent.database.settings')
@@ -63,6 +58,8 @@ class FileMonitorAgent:
     
     def _setup_logging(self) -> logging.Logger:
         """Setup logging configuration."""
+        # TODO: Switch to SWF common logging
+
         logger = logging.getLogger('swf_fastmon_agent.file_monitor')
         logger.setLevel(logging.INFO)
         
@@ -236,7 +233,7 @@ class FileMonitorAgent:
     def _record_file(self, file_path: Path):
         """
         Record a file in the database.
-        
+
         Args:
             file_path: Path to the file to record
         """
@@ -330,8 +327,7 @@ def main():
     # Example configuration - in production, this would come from config file
     config = {
         'watch_directories': [
-            '/data/stf_files',
-            '/mnt/daq/output',
+            '/data/DAQbuffer/',
         ],
         'file_patterns': ['*.stf', '*.STF'],
         'check_interval': 30,  # seconds
