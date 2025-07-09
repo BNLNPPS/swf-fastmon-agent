@@ -10,8 +10,9 @@ import random
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
+# Django models
 from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
 
 
@@ -59,8 +60,10 @@ def find_recent_files(config: dict, logger: logging.Logger) -> List[Path]:
     Returns:
         List of Path objects for matching files
     """
-    cutoff_time = datetime.now() - timedelta(minutes=config['lookback_time'])
-    cutoff_timestamp = cutoff_time.timestamp()
+    cutoff_timestamp = None
+    if config['lookback_time']:
+        cutoff_time = datetime.now() - timedelta(minutes=config['lookback_time'])
+        cutoff_timestamp = cutoff_time.timestamp()
     
     matching_files = []
     
@@ -74,9 +77,10 @@ def find_recent_files(config: dict, logger: logging.Logger) -> List[Path]:
             for pattern in config['file_patterns']:
                 for file_path in dir_path.glob(pattern):
                     if file_path.is_file():
-                        # Check if file was created after cutoff time
-                        if file_path.stat().st_ctime > cutoff_timestamp:
-                            matching_files.append(file_path)
+                        # Check if file was created after cutoff time, otherwise skip
+                        if cutoff_timestamp and file_path.stat().st_ctime < cutoff_timestamp:
+                            continue
+                        matching_files.append(file_path)
                             
         except Exception as e:
             logger.error(f"Error scanning directory {directory}: {e}")

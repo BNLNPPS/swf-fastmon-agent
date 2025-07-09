@@ -9,10 +9,7 @@ Designed to run continuously under supervisord.
 """
 
 import os
-import sys
 import time
-from typing import List
-
 import django
 
 # Configure Django
@@ -102,7 +99,7 @@ def main():
         ],
         'file_patterns': ['*.stf', '*.STF'],
         'check_interval': 30,  # seconds
-        'lookback_time': 5,    # minutes
+        'lookback_time': 0,    # minutes
         'selection_fraction': 0.1,  # 10% of files
         'default_run_number': 1,
         'base_url': 'file://',
