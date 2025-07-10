@@ -3,8 +3,6 @@
 Unit tests for fastmon_utils.py
 """
 
-import os
-import sys
 import pytest
 import logging
 import tempfile
@@ -33,7 +31,7 @@ from swf_fastmon_agent.agents.fastmon_utils import (
 from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
 
 
-class TestSetupLogging(TestCase):
+class TestSetupLogging:
     """Test the setup_logging function"""
     
     def test_setup_logging_default(self):
@@ -57,7 +55,7 @@ class TestSetupLogging(TestCase):
         assert len(logger2.handlers) == 1
 
 
-class TestValidateConfig(TestCase):
+class TestValidateConfig:
     """Test the validate_config function"""
 
     def test_validate_config_valid(self):
@@ -99,7 +97,7 @@ class TestValidateConfig(TestCase):
             validate_config(config)
 
 
-class TestFindRecentFiles(TestCase):
+class TestFindRecentFiles:
     """Test the find_recent_files function"""
 
     def test_find_recent_files_no_lookback(self):
@@ -151,7 +149,7 @@ class TestFindRecentFiles(TestCase):
         logger.warning.assert_called_once()
 
 
-class TestSelectFiles(TestCase):
+class TestSelectFiles:
     """Test the select_files function"""
 
     def test_select_files_empty_list(self):
@@ -189,7 +187,7 @@ class TestSelectFiles(TestCase):
         assert result == files[:2]
 
 
-class TestExtractRunNumber(TestCase):
+class TestExtractRunNumber:
     """Test the extract_run_number function"""
 
     def test_extract_run_number_run_underscore(self):
@@ -223,7 +221,7 @@ class TestExtractRunNumber(TestCase):
         assert result == 9999
 
 
-class TestCalculateChecksum(TestCase):
+class TestCalculateChecksum:
     """Test the calculate_checksum function"""
 
     def test_calculate_checksum_valid_file(self):
@@ -249,7 +247,7 @@ class TestCalculateChecksum(TestCase):
         logger.error.assert_called_once()
 
 
-class TestConstructFileUrl(TestCase):
+class TestConstructFileUrl:
     """Test the construct_file_url function"""
 
     def test_construct_file_url_default(self):
