@@ -33,7 +33,7 @@ from swf_fastmon_agent.agents.fastmon_utils import (
 from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
 
 
-class TestSetupLogging:
+class TestSetupLogging(TestCase):
     """Test the setup_logging function"""
     
     def test_setup_logging_default(self):
@@ -57,9 +57,9 @@ class TestSetupLogging:
         assert len(logger2.handlers) == 1
 
 
-class TestValidateConfig:
+class TestValidateConfig(TestCase):
     """Test the validate_config function"""
-    
+
     def test_validate_config_valid(self):
         """Test validate_config with valid configuration"""
         config = {
@@ -71,7 +71,7 @@ class TestValidateConfig:
             'default_run_number': 1000
         }
         validate_config(config)  # Should not raise
-        
+
     def test_validate_config_missing_key(self):
         """Test validate_config with missing required key"""
         config = {
@@ -84,7 +84,7 @@ class TestValidateConfig:
         }
         with pytest.raises(ValueError, match="Missing required configuration key: default_run_number"):
             validate_config(config)
-            
+
     def test_validate_config_invalid_fraction(self):
         """Test validate_config with invalid selection fraction"""
         config = {
@@ -99,44 +99,44 @@ class TestValidateConfig:
             validate_config(config)
 
 
-class TestFindRecentFiles:
+class TestFindRecentFiles(TestCase):
     """Test the find_recent_files function"""
-    
+
     def test_find_recent_files_no_lookback(self):
         """Test find_recent_files with no lookback time"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test files
             test_file = Path(temp_dir) / "test.stf"
             test_file.write_text("test content")
-            
+
             config = {
                 'watch_directories': [temp_dir],
                 'file_patterns': ['*.stf'],
                 'lookback_time': None
             }
             logger = Mock()
-            
+
             files = find_recent_files(config, logger)
             assert len(files) == 1
             assert files[0].name == "test.stf"
-            
+
     def test_find_recent_files_with_lookback(self):
         """Test find_recent_files with lookback time"""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test files
             test_file = Path(temp_dir) / "test.stf"
             test_file.write_text("test content")
-            
+
             config = {
                 'watch_directories': [temp_dir],
                 'file_patterns': ['*.stf'],
                 'lookback_time': 60  # 60 minutes
             }
             logger = Mock()
-            
+
             files = find_recent_files(config, logger)
             assert len(files) == 1
-            
+
     def test_find_recent_files_nonexistent_directory(self):
         """Test find_recent_files with non-existent directory"""
         config = {
@@ -145,77 +145,77 @@ class TestFindRecentFiles:
             'lookback_time': 60
         }
         logger = Mock()
-        
+
         files = find_recent_files(config, logger)
         assert len(files) == 0
         logger.warning.assert_called_once()
 
 
-class TestSelectFiles:
+class TestSelectFiles(TestCase):
     """Test the select_files function"""
-    
+
     def test_select_files_empty_list(self):
         """Test select_files with empty file list"""
         logger = Mock()
         result = select_files([], 0.5, logger)
         assert result == []
-        
+
     def test_select_files_fraction(self):
         """Test select_files with fraction selection"""
         files = [Path(f"/tmp/file{i}.stf") for i in range(10)]
         logger = Mock()
-        
+
         result = select_files(files, 0.5, logger)
         assert len(result) == 5
         assert all(f in files for f in result)
-        
+
     def test_select_files_min_one(self):
         """Test select_files always selects at least one file"""
         files = [Path("/tmp/file1.stf")]
         logger = Mock()
-        
+
         result = select_files(files, 0.1, logger)
         assert len(result) == 1
-        
+
     @patch('swf_fastmon_agent.agents.fastmon_utils.random.sample')
     def test_select_files_random_called(self, mock_random):
         """Test that random.sample is called correctly"""
         files = [Path(f"/tmp/file{i}.stf") for i in range(5)]
         mock_random.return_value = files[:2]
         logger = Mock()
-        
+
         result = select_files(files, 0.4, logger)
         mock_random.assert_called_once_with(files, 2)
         assert result == files[:2]
 
 
-class TestExtractRunNumber:
+class TestExtractRunNumber(TestCase):
     """Test the extract_run_number function"""
-    
+
     def test_extract_run_number_run_underscore(self):
         """Test extracting run number with run_ pattern"""
         file_path = Path("/tmp/run_12345_stf_001.stf")
         result = extract_run_number(file_path, 9999)
         assert result == 12345
-        
+
     def test_extract_run_number_run_no_underscore(self):
         """Test extracting run number with run pattern (no underscore)"""
         file_path = Path("/tmp/run12345_stf_001.stf")
         result = extract_run_number(file_path, 9999)
         assert result == 12345
-        
+
     def test_extract_run_number_r_pattern(self):
         """Test extracting run number with r pattern"""
         file_path = Path("/tmp/r12345_stf_001.stf")
         result = extract_run_number(file_path, 9999)
         assert result == 12345
-        
+
     def test_extract_run_number_case_insensitive(self):
         """Test extracting run number is case insensitive"""
         file_path = Path("/tmp/RUN_12345_stf_001.stf")
         result = extract_run_number(file_path, 9999)
         assert result == 12345
-        
+
     def test_extract_run_number_no_match(self):
         """Test extracting run number when no pattern matches"""
         file_path = Path("/tmp/some_file.stf")
@@ -223,24 +223,24 @@ class TestExtractRunNumber:
         assert result == 9999
 
 
-class TestCalculateChecksum:
+class TestCalculateChecksum(TestCase):
     """Test the calculate_checksum function"""
-    
+
     def test_calculate_checksum_valid_file(self):
         """Test calculating checksum for valid file"""
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
             f.write("test content")
             f.flush()
-            
+
             logger = Mock()
             result = calculate_checksum(Path(f.name), logger)
-            
+
             # Calculate expected checksum
             expected = hashlib.md5(b"test content").hexdigest()
             assert result == expected
-            
+
         Path(f.name).unlink()  # Clean up
-        
+
     def test_calculate_checksum_nonexistent_file(self):
         """Test calculating checksum for non-existent file"""
         logger = Mock()
@@ -249,23 +249,23 @@ class TestCalculateChecksum:
         logger.error.assert_called_once()
 
 
-class TestConstructFileUrl:
+class TestConstructFileUrl(TestCase):
     """Test the construct_file_url function"""
-    
+
     def test_construct_file_url_default(self):
         """Test constructing file URL with default base"""
         file_path = Path("/tmp/test.stf")
         result = construct_file_url(file_path)
         assert result.startswith("file://")
         assert result.endswith("/tmp/test.stf")
-        
+
     def test_construct_file_url_custom_base(self):
         """Test constructing file URL with custom base"""
         file_path = Path("/tmp/test.stf")
         result = construct_file_url(file_path, "https://example.com/")
         assert result.startswith("https://example.com")
         assert result.endswith("/tmp/test.stf")
-        
+
     def test_construct_file_url_base_without_slash(self):
         """Test constructing file URL with base URL without trailing slash"""
         file_path = Path("/tmp/test.stf")
@@ -301,7 +301,7 @@ class TestDjangoFunctions(TestCase):
         
         run = get_or_create_run(12345, self.logger)
         
-        assert run.id == existing_run.id
+        assert run.run_id == existing_run.run_id
         assert run.run_conditions == {'manual': True}  # Should keep original
         assert Run.objects.count() == 1
         self.logger.info.assert_not_called()

@@ -39,3 +39,5 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["swf_fastmon_agent*"]
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "swf_fastmon_agent.database.settings"
