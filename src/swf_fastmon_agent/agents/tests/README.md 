@@ -1,0 +1,21 @@
+# How to run the tests?
+
+First, confirm that the postgres database is running (Django tests create a tmp database). In a local environment,
+you can use Docker compose in the root
+directory of the project:
+```
+docker compose up -d
+```
+
+Use pytest to run the tests in this directory
+
+```
+pytest -v
+```
+
+Pytest works with the Django test framework using the `pytest-django` plugin. Make sure you have it installed in your environment.
+It is configured in the `pyproject.toml` file of the project:
+```
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "swf_fastmon_agent.database.settings"
+```
