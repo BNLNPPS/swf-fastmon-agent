@@ -24,7 +24,7 @@ from swf_fastmon_agent.agents.fastmon_utils import (
     calculate_checksum,
     construct_file_url,
     get_or_create_run,
-    record_file
+    record_file,
 )
 
 # Django models
@@ -33,24 +33,24 @@ from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
 
 class TestSetupLogging:
     """Test the setup_logging function"""
-    
+
     def test_setup_logging_default(self):
         """Test setup_logging with default parameters"""
         logger = setup_logging()
-        assert logger.name == 'swf_fastmon_agent.file_monitor'
+        assert logger.name == "swf_fastmon_agent.file_monitor"
         assert logger.level == logging.INFO
         assert len(logger.handlers) == 1
-        
+
     def test_setup_logging_custom_name(self):
         """Test setup_logging with custom logger name"""
-        logger = setup_logging('test_logger')
-        assert logger.name == 'test_logger'
+        logger = setup_logging("test_logger")
+        assert logger.name == "test_logger"
         assert logger.level == logging.INFO
-        
+
     def test_setup_logging_no_duplicate_handlers(self):
         """Test that multiple calls don't create duplicate handlers"""
-        logger1 = setup_logging('test_logger_unique')
-        logger2 = setup_logging('test_logger_unique')
+        logger1 = setup_logging("test_logger_unique")
+        logger2 = setup_logging("test_logger_unique")
         assert len(logger1.handlers) == 1
         assert len(logger2.handlers) == 1
 
@@ -61,39 +61,43 @@ class TestValidateConfig:
     def test_validate_config_valid(self):
         """Test validate_config with valid configuration"""
         config = {
-            'watch_directories': ['/tmp'],
-            'file_patterns': ['*.stf'],
-            'check_interval': 60,
-            'lookback_time': 10,
-            'selection_fraction': 0.5,
-            'default_run_number': 1000
+            "watch_directories": ["/tmp"],
+            "file_patterns": ["*.stf"],
+            "check_interval": 60,
+            "lookback_time": 10,
+            "selection_fraction": 0.5,
+            "default_run_number": 1000,
         }
         validate_config(config)  # Should not raise
 
     def test_validate_config_missing_key(self):
         """Test validate_config with missing required key"""
         config = {
-            'watch_directories': ['/tmp'],
-            'file_patterns': ['*.stf'],
-            'check_interval': 60,
-            'lookback_time': 10,
-            'selection_fraction': 0.5
+            "watch_directories": ["/tmp"],
+            "file_patterns": ["*.stf"],
+            "check_interval": 60,
+            "lookback_time": 10,
+            "selection_fraction": 0.5,
             # Missing default_run_number
         }
-        with pytest.raises(ValueError, match="Missing required configuration key: default_run_number"):
+        with pytest.raises(
+            ValueError, match="Missing required configuration key: default_run_number"
+        ):
             validate_config(config)
 
     def test_validate_config_invalid_fraction(self):
         """Test validate_config with invalid selection fraction"""
         config = {
-            'watch_directories': ['/tmp'],
-            'file_patterns': ['*.stf'],
-            'check_interval': 60,
-            'lookback_time': 10,
-            'selection_fraction': 1.5,  # Invalid
-            'default_run_number': 1000
+            "watch_directories": ["/tmp"],
+            "file_patterns": ["*.stf"],
+            "check_interval": 60,
+            "lookback_time": 10,
+            "selection_fraction": 1.5,  # Invalid
+            "default_run_number": 1000,
         }
-        with pytest.raises(ValueError, match="selection_fraction must be between 0.0 and 1.0"):
+        with pytest.raises(
+            ValueError, match="selection_fraction must be between 0.0 and 1.0"
+        ):
             validate_config(config)
 
 
@@ -108,9 +112,9 @@ class TestFindRecentFiles:
             test_file.write_text("test content")
 
             config = {
-                'watch_directories': [temp_dir],
-                'file_patterns': ['*.stf'],
-                'lookback_time': None
+                "watch_directories": [temp_dir],
+                "file_patterns": ["*.stf"],
+                "lookback_time": None,
             }
             logger = Mock()
 
@@ -126,9 +130,9 @@ class TestFindRecentFiles:
             test_file.write_text("test content")
 
             config = {
-                'watch_directories': [temp_dir],
-                'file_patterns': ['*.stf'],
-                'lookback_time': 60  # 60 minutes
+                "watch_directories": [temp_dir],
+                "file_patterns": ["*.stf"],
+                "lookback_time": 60,  # 60 minutes
             }
             logger = Mock()
 
@@ -138,9 +142,9 @@ class TestFindRecentFiles:
     def test_find_recent_files_nonexistent_directory(self):
         """Test find_recent_files with non-existent directory"""
         config = {
-            'watch_directories': ['/nonexistent/path'],
-            'file_patterns': ['*.stf'],
-            'lookback_time': 60
+            "watch_directories": ["/nonexistent/path"],
+            "file_patterns": ["*.stf"],
+            "lookback_time": 60,
         }
         logger = Mock()
 
@@ -175,7 +179,7 @@ class TestSelectFiles:
         result = select_files(files, 0.1, logger)
         assert len(result) == 1
 
-    @patch('swf_fastmon_agent.agents.fastmon_utils.random.sample')
+    @patch("swf_fastmon_agent.agents.fastmon_utils.random.sample")
     def test_select_files_random_called(self, mock_random):
         """Test that random.sample is called correctly"""
         files = [Path(f"/tmp/file{i}.stf") for i in range(5)]
@@ -226,7 +230,7 @@ class TestCalculateChecksum:
 
     def test_calculate_checksum_valid_file(self):
         """Test calculating checksum for valid file"""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("test content")
             f.flush()
 
@@ -274,121 +278,121 @@ class TestConstructFileUrl:
 
 class TestDjangoFunctions(TestCase):
     """Test Django-dependent functions using Django TestCase"""
-    
+
     def setUp(self):
         """Set up test data"""
         self.logger = Mock()
-        
+
     def test_get_or_create_run_new(self):
         """Test get_or_create_run creates new run"""
         run = get_or_create_run(12345, self.logger)
-        
+
         assert run.run_number == 12345
-        assert run.run_conditions == {'auto_created': True}
+        assert run.run_conditions == {"auto_created": True}
         assert Run.objects.count() == 1
         self.logger.info.assert_called_with("Created new run: 12345")
-        
+
     def test_get_or_create_run_existing(self):
         """Test get_or_create_run returns existing run"""
         # Create initial run
         existing_run = Run.objects.create(
-            run_number=12345,
-            start_time=timezone.now(),
-            run_conditions={'manual': True}
+            run_number=12345, start_time=timezone.now(), run_conditions={"manual": True}
         )
-        
+
         run = get_or_create_run(12345, self.logger)
-        
+
         assert run.run_id == existing_run.run_id
-        assert run.run_conditions == {'manual': True}  # Should keep original
+        assert run.run_conditions == {"manual": True}  # Should keep original
         assert Run.objects.count() == 1
         self.logger.info.assert_not_called()
-        
+
     def test_record_file_new(self):
         """Test record_file creates new STF file record"""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("test content")
             f.flush()
-            
+
             file_path = Path(f.name)
             config = {
-                'default_run_number': 1000,
-                'base_url': 'file://',
-                'calculate_checksum': False
+                "default_run_number": 1000,
+                "base_url": "file://",
+                "calculate_checksum": False,
             }
-            
+
             record_file(file_path, config, self.logger)
-            
+
             # Check that file was recorded
             assert StfFile.objects.count() == 1
             stf_file = StfFile.objects.first()
             assert stf_file.run.run_number == 1000
-            assert stf_file.file_url.startswith('file://')
+            assert stf_file.file_url.startswith("file://")
             assert stf_file.file_url.endswith(f.name)
             assert stf_file.status == FileStatus.REGISTERED
             assert stf_file.file_size_bytes > 0
-            
+
         Path(f.name).unlink()  # Clean up
-        
+
     def test_record_file_existing(self):
         """Test record_file skips existing files"""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("test content")
             f.flush()
-            
+
             file_path = Path(f.name)
             config = {
-                'default_run_number': 1000,
-                'base_url': 'file://',
-                'calculate_checksum': False
+                "default_run_number": 1000,
+                "base_url": "file://",
+                "calculate_checksum": False,
             }
-            
+
             # Record file twice
             record_file(file_path, config, self.logger)
             record_file(file_path, config, self.logger)
-            
+
             # Should only have one record
             assert StfFile.objects.count() == 1
-            
+
         Path(f.name).unlink()  # Clean up
-        
+
     def test_record_file_with_checksum(self):
         """Test record_file with checksum calculation"""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("test content")
             f.flush()
-            
+
             file_path = Path(f.name)
             config = {
-                'default_run_number': 1000,
-                'base_url': 'file://',
-                'calculate_checksum': True
+                "default_run_number": 1000,
+                "base_url": "file://",
+                "calculate_checksum": True,
             }
-            
+
             record_file(file_path, config, self.logger)
-            
+
             stf_file = StfFile.objects.first()
             expected_checksum = hashlib.md5(b"test content").hexdigest()
             assert stf_file.checksum == expected_checksum
-            
+
         Path(f.name).unlink()  # Clean up
-        
+
     def test_record_file_with_run_number_extraction(self):
         """Test record_file extracts run number from filename"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='_run_5678_stf.stf', delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix="_run_5678_stf.stf", delete=False
+        ) as f:
             f.write("test content")
             f.flush()
-            
+
             file_path = Path(f.name)
             config = {
-                'default_run_number': 1000,
-                'base_url': 'file://',
-                'calculate_checksum': False
+                "default_run_number": 1000,
+                "base_url": "file://",
+                "calculate_checksum": False,
             }
-            
+
             record_file(file_path, config, self.logger)
-            
+
             stf_file = StfFile.objects.first()
             assert stf_file.run.run_number == 5678
-            
+
         Path(f.name).unlink()  # Clean up

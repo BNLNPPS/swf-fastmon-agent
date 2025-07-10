@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 # Set Django settings module
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'swf_fastmon_agent.database.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "swf_fastmon_agent.database.settings")
 
 import django
 from django.core.management import call_command, execute_from_command_line
@@ -28,20 +28,21 @@ def main():
     try:
         # Setup Django
         django.setup()
-        
+
         # Create migrations
         logger.info("Creating database migrations...")
-        call_command('makemigrations', 'database', verbosity=1)
-        
+        call_command("makemigrations", "database", verbosity=1)
+
         # Apply migrations
         logger.info("Applying database migrations...")
-        call_command('migrate', verbosity=1)
-        
+        call_command("migrate", verbosity=1)
+
         # Test by importing and using the database manager
         from swf_fastmon_agent import DatabaseManager
+
         db_manager = DatabaseManager()
         logger.info("Database setup completed successfully!")
-        
+
     except Exception as e:
         logger.error(f"Database setup failed: {e}")
         sys.exit(1)

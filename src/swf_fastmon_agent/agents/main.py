@@ -13,7 +13,7 @@ import time
 import django
 
 # Configure Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'swf_fastmon_agent.database.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "swf_fastmon_agent.database.settings")
 django.setup()
 
 from swf_fastmon_agent.agents import fastmon_utils
@@ -23,11 +23,11 @@ class FileMonitorAgent:
     """
     Agent that monitors directories for new STF files and records them in the database.
     """
-    
+
     def __init__(self, config: dict):
         """
         Initialize the file monitor agent.
-        
+
         Args:
             config: configuration dictionary containing:
                 - watch_directories: List of directories to monitor
@@ -45,7 +45,6 @@ class FileMonitorAgent:
         # Validate configuration
         fastmon_utils.validate_config(self.config)
         self.logger.info(f"File Monitor Agent initialized with config: {config}")
-    
 
     def _process_files(self):
         """Process a single scan cycle."""
@@ -57,7 +56,9 @@ class FileMonitorAgent:
                 return
 
             # Select fraction of files
-            selected_files = fastmon_utils.select_files(recent_files, self.config['selection_fraction'], self.logger)
+            selected_files = fastmon_utils.select_files(
+                recent_files, self.config["selection_fraction"], self.logger
+            )
 
             # Record selected files
             for file_path in selected_files:
@@ -66,17 +67,16 @@ class FileMonitorAgent:
         except Exception as e:
             self.logger.error(f"Error in process cycle: {e}")
 
-
     def start(self):
         """Start the file monitoring agent."""
         self.running = True
         self.logger.info("File Monitor Agent started")
-        
+
         try:
             while self.running:
                 self._process_files()
                 # Sleep for the configured interval
-                time.sleep(self.config['check_interval'])
+                time.sleep(self.config["check_interval"])
         except KeyboardInterrupt:
             self.logger.info("Received interrupt signal")
         except Exception as e:
@@ -84,7 +84,7 @@ class FileMonitorAgent:
         finally:
             self.running = False
             self.logger.info("File Monitor Agent stopped")
-    
+
     def stop(self):
         """Stop the file monitoring agent."""
         self.running = False
@@ -94,21 +94,21 @@ def main():
     """Main entry point for the agent."""
     # Example configuration - in production, this would come from config file
     config = {
-        'watch_directories': [
-            '/data/DAQbuffer/',
+        "watch_directories": [
+            "/data/DAQbuffer/",
         ],
-        'file_patterns': ['*.stf', '*.STF'],
-        'check_interval': 30,  # seconds
-        'lookback_time': 0,    # minutes
-        'selection_fraction': 0.1,  # 10% of files
-        'default_run_number': 1,
-        'base_url': 'file://',
-        'calculate_checksum': False,  # Set to True if checksums are needed
+        "file_patterns": ["*.stf", "*.STF"],
+        "check_interval": 30,  # seconds
+        "lookback_time": 0,  # minutes
+        "selection_fraction": 0.1,  # 10% of files
+        "default_run_number": 1,
+        "base_url": "file://",
+        "calculate_checksum": False,  # Set to True if checksums are needed
     }
     # Create and start agent
     agent = FileMonitorAgent(config)
     agent.start()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

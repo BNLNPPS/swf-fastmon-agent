@@ -1,6 +1,12 @@
 from datetime import datetime, timezone
 from django.test import TestCase
-from swf_fastmon_agent.database.models import FileStatus, Run, StfFile, MessageQueueDispatch
+from swf_fastmon_agent.database.models import (
+    FileStatus,
+    Run,
+    StfFile,
+    MessageQueueDispatch,
+)
+
 
 class FastMonitorDBModelsTestCase(TestCase):
     """
@@ -25,13 +31,13 @@ class FastMonitorDBModelsTestCase(TestCase):
             file_url="https://test.bnl.gov/daqsim/test.stf",
             file_size_bytes=1024,
             checksum="98dd0ac3",  # Aider32 for "A test for my fast monitoring"
-            metadata={"Collision type": "e-p"}
+            metadata={"Collision type": "e-p"},
         )
 
         # Create a sample message queue dispatch
         cls.message_queue_dispatch = MessageQueueDispatch.objects.create(
             stf_file=cls.stf_file,
-            message_content={"message": "A test message for fast monitoring"}
+            message_content={"message": "A test message for fast monitoring"},
         )
 
     def test_stf_file_creation(self):
@@ -44,4 +50,3 @@ class FastMonitorDBModelsTestCase(TestCase):
         self.assertEqual(self.stf_file.file_size_bytes, 1024)
         self.assertEqual(self.stf_file.checksum, "98dd0ac3")
         self.assertEqual(self.stf_file.metadata["Collision type"], "e-p")
-
