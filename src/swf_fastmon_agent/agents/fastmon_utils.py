@@ -16,9 +16,7 @@ from typing import List
 from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
 
 
-def setup_logging(
-    logger_name: str = "swf_fastmon_agent.file_monitor",
-) -> logging.Logger:
+def setup_logging(logger_name: str = "swf_fastmon_agent.file_monitor") -> logging.Logger:
     """Setup logging configuration."""
     # TODO: Switch to SWF common logging
 
@@ -203,7 +201,7 @@ def get_or_create_run(run_number: int, logger: logging.Logger) -> Run:
 
 def construct_file_url(file_path: Path, base_url: str = "file://") -> str:
     """
-    Construct URL for file access.
+    Construct URL for file access (for now it uses a file URL scheme).
 
     Args:
         file_path: Path to the file
@@ -212,12 +210,11 @@ def construct_file_url(file_path: Path, base_url: str = "file://") -> str:
     Returns:
         URL string
     """
-    if base_url.endswith("/"):
-        base_url = base_url[:-1]
+    base_url = base_url.rstrip('/')
 
     # Convert to absolute path and create URL
     abs_path = file_path.resolve()
-    return f"{base_url}{abs_path}"
+    return f"{base_url}/{abs_path}"
 
 
 def record_file(file_path: Path, config: dict, logger: logging.Logger) -> None:
@@ -270,3 +267,18 @@ def record_file(file_path: Path, config: dict, logger: logging.Logger) -> None:
 
     except Exception as e:
         logger.error(f"Error recording file {file_path}: {e}")
+
+
+def broadcast_files(selected_files: dict, config: dict, logger: logging.Logger) -> None:
+    """
+    Broadcast a message to the Active MQ.
+
+    Args:
+        selected_files: Dict with metadata of selected file paths to broadcast
+        config: Configuration dictionary
+        logger: Logger instance
+    """
+
+    # Placeholder for actual broadcast logic
+
+    # message_queue.send(message)

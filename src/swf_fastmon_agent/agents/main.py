@@ -2,8 +2,9 @@
 """
 File Monitor Agent for SWF Fast Monitoring System.
 
-This agent monitors DAQ directories for newly created STF files, selects a fraction
-of them based on configuration, and records them in the fast monitoring database.
+This agent monitors DAQ directories for newly created STF files, then grabs a fraction of TFs based on configuration,
+and records them in the fast monitoring database.
+The TFs are then broadcast to message queues for further processing.
 
 Designed to run continuously under supervisord.
 """
@@ -19,7 +20,7 @@ django.setup()
 from swf_fastmon_agent.agents import fastmon_utils
 
 
-class FileMonitorAgent:
+class FastMonitorAgent:
     """
     Agent that monitors directories for new STF files and records them in the database.
     """
@@ -47,22 +48,26 @@ class FileMonitorAgent:
         self.logger.info(f"File Monitor Agent initialized with config: {config}")
 
     def _process_files(self):
-        """Process a single scan cycle."""
+        """Process STF files in a single scan cycle."""
         try:
-            # Find recent files
+            # Find the most recent STF files based on the time window set in the configuration
             recent_files = fastmon_utils.find_recent_files(self.config, self.logger)
             if not recent_files:
                 self.logger.debug("No recent files found")
                 return
 
-            # Select fraction of files
+            # Select a fraction of files, emulating TF extraction for now (swf-testbed)
             selected_files = fastmon_utils.select_files(
                 recent_files, self.config["selection_fraction"], self.logger
             )
 
-            # Record selected files
+            # Record selected files in the fast monitoring database
             for file_path in selected_files:
                 fastmon_utils.record_file(file_path, self.config, self.logger)
+
+            # Broadcast the selected files to message queues
+            fastmon_utils.broadcast_files(selected_files, self.config["base_url"], self.logger)
+
 
         except Exception as e:
             self.logger.error(f"Error in process cycle: {e}")
@@ -90,12 +95,13 @@ class FileMonitorAgent:
         self.running = False
 
 
+
 def main():
     """Main entry point for the agent."""
     # Example configuration - in production, this would come from config file
     config = {
         "watch_directories": [
-            "/data/DAQbuffer/",
+            "/Users/villanueva/tmp/DAQbuffer",
         ],
         "file_patterns": ["*.stf", "*.STF"],
         "check_interval": 30,  # seconds
@@ -103,10 +109,10 @@ def main():
         "selection_fraction": 0.1,  # 10% of files
         "default_run_number": 1,
         "base_url": "file://",
-        "calculate_checksum": False,  # Set to True if checksums are needed
+        "calculate_checksum": True,
     }
-    # Create and start agent
-    agent = FileMonitorAgent(config)
+    # Create and start agent for locating files
+    agent = FastMonitorAgent(config)
     agent.start()
 
 

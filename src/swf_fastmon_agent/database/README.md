@@ -2,6 +2,8 @@
 
 This module provides Django-based database models and operations for the SWF Fast Monitoring Agent, part of the ePIC streaming workflow testbed.
 
+** NOTE: Will move to use the swf-monitor infrastructure **
+
 ## Overview
 
 The database module tracks Super Time Frame (STF) files, data-taking runs, message queue subscribers, and dispatch operations in the ePIC detector system's data workflow.
