@@ -2,11 +2,13 @@
 
 **`swf-fastmon-agent`** is a fast monitoring service for the ePIC streaming workflow testbed. 
 
-It pulls metadata of Time Frames (TF) and distribute the information via message queues, allowing remote monitoring of the ePIC data acquisition.
+It pulls metadata of Time Frames (TF) and distribute the information via message queues, allowing remote monitoring of the 
+ePIC data acquisition.
 
 ## Architecture Overview
 
-The agent is designed to distribute metadata with and ActiveMQ messaging systems, bookkeeping activity with the swf-monitor PostgreSQL database.
+The agent is designed to distribute metadata with and ActiveMQ messaging systems, bookkeeping activity with the swf-monitor
+PostgreSQL database.
 
 
 -------------- 

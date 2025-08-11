@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List
 
 # Django models
-from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
+from monitor_app.models import Run, StfFile, FileStatus
 
 
 def setup_logging(logger_name: str = "swf_fastmon_agent.file_monitor") -> logging.Logger:
@@ -103,7 +103,7 @@ def select_files(
 
     Args:
         files: List of file paths to select from
-        selection_fraction: Fraction of files to select (0.0-1.0)
+        selection_fraction: Fraction of files to select [0.0, 1.0]
         logger: Logger instance
 
     Returns:
@@ -269,12 +269,12 @@ def record_file(file_path: Path, config: dict, logger: logging.Logger) -> None:
         logger.error(f"Error recording file {file_path}: {e}")
 
 
-def broadcast_files(selected_files: dict, config: dict, logger: logging.Logger) -> None:
+def broadcast_files(selected_files: list, config: dict, logger: logging.Logger) -> None:
     """
     Broadcast a message to the Active MQ.
 
     Args:
-        selected_files: Dict with metadata of selected file paths to broadcast
+        selected_files: List with metadata of selected file paths to broadcast
         config: Configuration dictionary
         logger: Logger instance
     """

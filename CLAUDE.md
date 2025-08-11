@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based fast monitoring agent (`swf-fastmon-agent`) that appears to be part of a larger ePIC streaming workflow testbed ecosystem, including related modules:
+This is a Python-based fast monitoring agent (`swf-fastmon-agent`) that appears to be part of a larger ePIC streaming 
+workflow testbed ecosystem, including related modules:
 - `swf-testbed` - Testing environment
 - `swf-monitor` - Monitoring system
 - `swf-daqsim-agent` - Data acquisition simulation agent
@@ -14,7 +15,7 @@ The project is designed to work with PostgreSQL databases and ActiveMQ messaging
 ## Development Environment
 
 - **Python Version**: 3.9
-- **IDE**: PyCharm (with Black formatter configured)
+- **IDE**: PyCharm or VScode (with Black formatter configured)
 - **Code Formatter**: Black
 - **License**: Apache 2.0
 
@@ -22,25 +23,19 @@ The project is designed to work with PostgreSQL databases and ActiveMQ messaging
 
 The project has been converted to Django framework with modern packaging:
 ```
-src/swf_fastmon_agent/
+src/swf_fastmon_agent/   # Agent implementations
 ├── __init__.py          # Package initialization
-├── agents/              # Agent implementations
-│   ├── __init__.py
-│   ├── file_monitor.py  # File monitoring agent
-│   └── supervisord_example.conf  # Supervisord configuration example
-└── database/            # Django app for database management
-    ├── __init__.py
-    ├── apps.py          # Django app configuration
-    ├── database.py      # Database utilities and operations
-    ├── models.py        # Django ORM models (with docstrings)
-    ├── settings.py      # Django settings configuration
-    ├── migrations/      # Database migrations
-    │   ├── 0001_initial.py
-    │   ├── 0002_alter_stffile_status.py
-    │   └── __init__.py
-    └── tests/           # Test suite
-        ├── __init__.py
-        └── test_database.py
+├── main.py              # Main file monitoring agent
+├── fastmon_utils.py     # Utility functions for the agent
+└── database/            # Django database configuration
+    └── settings.py      # Django settings
+```
+
+```
+src/swf-fastmon-client/  # Lightweight monitoring client
+├── __init__.py          # Package initialization
+├── main.py              # Typer CLI client for TF monitoring
+└── README.md            # Client documentation
 ```
 
 Additional project files:
@@ -66,13 +61,32 @@ Additional project files:
 
 ### Agent Components
 
-- **`agents/file_monitor.py`**: File monitoring agent that:
+- **`main.py`**: Main file monitoring agent (`FastMonitorAgent`) that:
   - Monitors specified directories for newly created STF files
   - Applies time-based filtering (files created within X minutes)
   - Randomly selects a configurable fraction of discovered files
   - Records selected files in the database with metadata
+  - Broadcasts selected files to ActiveMQ message queues
   - Designed for continuous operation under supervisord
   - Supports environment variable configuration for deployment flexibility
+
+- **`fastmon_utils.py`**: Core utility functions including:
+  - File discovery and time-based filtering
+  - Random file selection algorithms
+  - Database operations for STF file recording
+  - Run number extraction from filenames
+  - Checksum calculation and validation
+  - ActiveMQ message broadcasting (placeholder implementation)
+
+### Client Components
+
+- **`src/swf-fastmon-client/main.py`**: Lightweight monitoring client (`FastMonitoringClient`) that:
+  - Receives TF metadata from ActiveMQ using STOMP protocol
+  - Stores metadata in local SQLite database for remote monitoring
+  - Provides Typer-based CLI with `start`, `status`, and `init-db` commands
+  - Supports SSL connections and flexible ActiveMQ configuration
+  - Designed for minimal infrastructure requirements and portability
+  - Enables remote monitoring of ePIC data acquisition with local data persistence
 
 ## Dependencies and External Systems
 
@@ -106,6 +120,18 @@ Django settings support standard environment variables:
 
 ## Development Commands
 
+### System Initialization
+```bash
+cd $SWF_PARENT_DIR/swf-testbed
+source .venv/bin/activate  # or conda activate your_env_name
+pip install -e $SWF_PARENT_DIR/swf-common-lib $SWF_PARENT_DIR/swf-monitor $SWF_PARENT_DIR/swf-fastmon-agent .
+# CRITICAL: Set up Django environment
+cp $SWF_PARENT_DIR/swf-monitor/.env.example $SWF_PARENT_DIR/swf-monitor/.env
+# Edit .env to set DB_PASSWORD='your_db_password' and SECRET_KEY
+cd $SWF_PARENT_DIR/swf-monitor/src && python manage.py migrate
+cd $SWF_PARENT_DIR/swf-testbed && swf-testbed init
+```
+
 With Django framework in place, use these standard commands:
 
 ### Django Management
@@ -126,17 +152,45 @@ With Django framework in place, use these standard commands:
 - `python setup_db.py` - Custom database setup utility
 
 ### Agent Operations
-- `python -m swf_fastmon_agent.agents.file_monitor` - Run file monitoring agent
+- `python -m swf_fastmon_agent.main` - Run file monitoring agent
 - Configure via environment variables:
   - `FASTMON_WATCH_DIRS` - Comma-separated directories to monitor
   - `FASTMON_FRACTION` - Fraction of files to select (0.0-1.0)
   - `FASTMON_INTERVAL` - Check interval in seconds
   - `FASTMON_LOOKBACK` - Lookback time in minutes
-- Use `src/swf_fastmon_agent/agents/supervisord_example.conf` for supervisord deployment
+- Use supervisord for deployment with appropriate configuration
+
+### Client Operations
+Fast monitoring client commands (from `src/swf-fastmon-client/`):
+- `python main.py init-db --db /path/to/fastmon.db` - Initialize SQLite database
+- `python main.py start --host localhost --port 61613` - Start monitoring client
+- `python main.py status --run 12345` - View run statistics
+- `python main.py start --ssl --ca-certs /path/to/ca.pem` - Start with SSL
+- Client dependencies: `pip install typer stomp.py`
 
 ## Related Projects
 
 This agent is part of a multi-module scientific workflow system. Dependencies on `swf-testbed`, `swf-monitor`, and `swf-daqsim-agent` suggest coordination with other components in the ecosystem.
+
+## Troubleshooting
+
+### Common Issues
+- **Virtual Environment Persistence**: The shell environment, including the activated virtual environment, does **not** persist between command calls. You **MUST** chain environment setup and the command that requires it in a single call.
+  - **Correct**: `cd $SWF_PARENT_DIR/swf-testbed && source .venv/bin/activate && python manage.py migrate`
+  - **Incorrect**: Running `source .venv/bin/activate` in one call and `python manage.py migrate` in another.
+- **Conda Environment Support**: Scripts now support both virtual environments and Conda environments. The improved environment detection checks for both `sys.prefix != sys.base_prefix` (venv) and `CONDA_DEFAULT_ENV` environment variable.
+- **Core repository structure**: Ensure swf-testbed, swf-monitor, swf-common-lib, and swf-fastmon-agent are siblings
+- **Database connections**: Verify PostgreSQL is running and accessible
+- **ActiveMQ connectivity**: Check message broker is running on expected ports
+
+### Diagnostic Commands
+```bash
+# Check if in proper environment (works for both venv and conda)
+python -c "import sys, os; print('Virtual env:', sys.prefix != sys.base_prefix); print('Conda env:', 'CONDA_DEFAULT_ENV' in os.environ)"
+
+# Verify core repository structure
+ls -la $SWF_PARENT_DIR/swf-testbed $SWF_PARENT_DIR/swf-monitor $SWF_PARENT_DIR/swf-common-lib $SWF_PARENT_DIR/swf-fastmon-agent
+```
 
 ## AI Development Guidelines
 
