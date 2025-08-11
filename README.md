@@ -2,150 +2,93 @@
 
 **`swf-fastmon-agent`** is a fast monitoring service for the ePIC streaming workflow testbed. 
 
-It pulls metadata of Time Frames (TF) and distribute the information via message queues, allowing remote monitoring of the 
-ePIC data acquisition.
+This agent pulls metadata of Time Frames (TF) and distributes the information via ActiveMQ message queues, enabling real-time remote monitoring of ePIC data acquisition processes.
 
 ## Architecture Overview
 
-The agent is designed to distribute metadata with and ActiveMQ messaging systems, bookkeeping activity with the swf-monitor
-PostgreSQL database.
+The fast monitoring agent is designed as part of the **SWF testbed ecosystem** and integrates with:
+- **swf-monitor**: PostgreSQL database and Django web interface for persistent monitoring data
+- **swf-testbed**: Infrastructure orchestration and process management
+- **swf-data-agent**: Receiving messages when STF files are available for fast monitoring
 
+The agent operates as a managed service within the swf-testbed ecosystem, automatically configured and monitored through the central CLI.
 
 -------------- 
 
-## Quick Start with Docker
+## Integration with SWF Testbed
 
 ### Prerequisites
-- Docker and Docker Compose
-- Python 3.9+
+- Complete SWF testbed ecosystem (swf-testbed, swf-monitor, swf-common-lib as siblings)
+- Docker Desktop for infrastructure services
+- Python 3.9+ virtual environment
 
-### 1. Start PostgreSQL Database
+### Running the Agent
 ```bash
-# Start the PostgreSQL container
-docker-compose up -d
+# The agent runs as a managed service within the testbed
+cd $SWF_PARENT_DIR/swf-testbed
+swf-testbed status  # Check if fast monitoring agent is running
 
-# Check container status
-docker-compose ps
+# Manual development run (for testing)
+cd ../swf-fastmon-agent
+python -m swf_fastmon_agent.main
 ```
 
-### 2. Set Up Environment (Optional)
-```bash
-# Copy environment template (defaults work for Docker setup)
-cp .env.example .env
-```
-
-### 3. Install Dependencies
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
-```
-
-### 4. Initialize Database Schema
-```bash
-python manage.py runserver
-
-# Create and apply Django migrations
-python manage.py makemigrations
-python manage.py migrate
-
-# Or use the custom setup script
-python setup_db.py
-```
-
-### 5. Use the Django Models
+### Working with Django Models
 ```python
 import django
 import os
 
-# Configure Django settings
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'swf_fastmon_agent.database.settings')
+# Configure Django settings to use swf-monitor database
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'swf_monitor_project.settings')
 django.setup()
-
-from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
-
-# Create a run
-run = Run.objects.create(
-    run_number=1001,
-    start_time="2024-01-15T10:00:00Z",
-    run_conditions={"beam_energy": "18GeV", "detector": "ePIC"}
-)
-
-# Create STF file metadata
-stf_file = StfFile.objects.create(
-    run=run,
-    machine_state="physics",
-    file_url="https://example.com/stf/file123.root",
-    file_size_bytes=1024000,
-    checksum="abc123def456",
-    status=FileStatus.REGISTERED,
-    metadata={"detector": "ePIC", "beam_energy": "18GeV"}
-)
-
-# Retrieve file metadata
-files = StfFile.objects.filter(run=run)
-print(f"Found {files.count()} files for run {run.run_number}")
 ```
 
-## Database Management
+## Agent Configuration
 
-### Starting/Stopping the Database
+The fast monitoring agent is configured through the swf-testbed ecosystem:
+
+### Environment Variables
+- Database connection: Managed by swf-monitor's Django settings
+- ActiveMQ connection: Configured via swf-testbed infrastructure
+- Logging: Uses swf-common-lib utilities for consistent logging across ecosystem
+
+## Agent Components
+
+- **Metadata Extraction**: Pulls Time Frame metadata from data acquisition systems
+- **Message Publishing**: Distributes metadata via ActiveMQ to registered subscribers
+- **Database Integration**: Stores monitoring data in swf-monitor PostgreSQL database
+- **Subscriber Management**: Handles subscription requests and message routing
+- **Status Reporting**: Provides health checks and performance metrics
+
+### Data Flow
+1. **Data Acquisition**: Monitors ePIC DAQ systems for new Time Frame files
+2. **Metadata Processing**: Extracts file metadata, checksums, and run conditions
+3. **Message Distribution**: Publishes to ActiveMQ topics for real-time monitoring
+4. **Database Storage**: Persists metadata in swf-monitor for historical analysis
+5. **Web Interface**: Accessible via swf-monitor Django web application
+
+## Development and Testing
+
+### Testing within Ecosystem
 ```bash
-# Start database
-docker-compose up -d
+# Run all testbed tests (includes fast monitoring agent)
+cd $SWF_PARENT_DIR/swf-testbed
+./run_all_tests.sh
 
-# Stop database
-docker-compose down
+# Test agent integration specifically
+cd ../swf-fastmon-agent
+python -m pytest tests/
 
-# Stop and remove data (WARNING: deletes all data)
-docker-compose down -v
+# Check agent status in testbed
+swf-testbed status
 ```
 
-### Accessing the Database
+### Code Quality
 ```bash
-# Connect to PostgreSQL container
-docker-compose exec postgres psql -U postgres -d swf_fastmonitoring
+# Format and lint (from swf-fastmon-agent directory)
+black .
+flake8 .
 
-# Or connect from host (when container is running)
-psql -h localhost -U postgres -d swf_fastmonitoring
-```
-
-## Configuration
-
-The library uses environment variables for database configuration:
-
-- `POSTGRES_HOST` (default: localhost)
-- `POSTGRES_PORT` (default: 5432)
-- `POSTGRES_DB` (default: swf_fastmonitoring)
-- `POSTGRES_USER` (default: postgres)
-- `POSTGRES_PASSWORD` (default: postgres)
-
-## Library Components
-
-- **Django Models**: Core data models for the monitoring system
-  - `Run`: Data-taking run information with auto-incrementing ID
-  - `StfFile`: Super Time Frame file metadata with UUID primary key
-  - `Subscriber`: Message queue subscribers with fraction-based dispatch
-  - `MessageQueueDispatch`: Message dispatch logging with success tracking
-  - `FileStatus`: Django TextChoices enum for file processing status
-- **Django Management**: Standard Django commands for database operations
-- **Database Utilities**: Custom database setup and operations (in `database.py`)
-
-## Development Commands
-
-### Django Management
-```bash
-python manage.py runserver      # Start development server
-python manage.py makemigrations # Create database migrations
-python manage.py migrate        # Apply database migrations
-python manage.py shell          # Django interactive shell
-python manage.py dbshell        # Database shell
-```
-
-### Testing and Code Quality
-```bash
-pytest          # Run tests
-black .         # Format code
-flake8 .        # Lint code
 ```
 
 ## Development Guidelines
