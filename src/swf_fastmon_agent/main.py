@@ -3,8 +3,8 @@
 File Monitor Agent for SWF Fast Monitoring System.
 
 This agent monitors DAQ directories for newly created STF files, then grabs a fraction of TFs based on configuration,
-and records them in the fast monitoring database.
-The TFs are then broadcast to message queues for further processing.
+and records metadata in the fast monitoring table.
+The TFs are then broadcast to message queues to the fast monitoring clients.
 
 Designed to run continuously under supervisord.
 """
@@ -54,7 +54,7 @@ def main():
     agent = FastMonitorAgent(config)
 
     # Check if we should run in message-driven mode or continuous mode
-    mode = os.getenv('FASTMON_MODE', 'message').lower()
+    mode = os.getenv('FASTMON_MODE', '').lower()
 
     if mode == 'continuous':
         # Run in continuous monitoring mode
@@ -176,53 +176,10 @@ class FastMonitorAgent(ExampleAgent):
     def handle_scan_request(self, message_data):
         """Handle explicit directory scan request."""
         self.logger.info("Processing scan request")
+        # TODO: Implement logic to handle data provided (for now it just scans the directory)
         self._process_files()
         self.send_fastmon_agent_heartbeat()
-    
-    def handle_run_imminent(self, message_data):
-        """Handle run_imminent message - prepare for increased file monitoring."""
-        run_id = message_data.get('run_id')
-        self.logger.info("Fast monitoring run_imminent message", 
-                        extra={"run_id": run_id, "simulation_tick": message_data.get('simulation_tick')})
-        
-        # Report agent status for run preparation
-        self.report_agent_status('OK', f'Preparing fast monitoring for run {run_id}')
-        
-        # Perform initial scan
-        self._process_files()
-    
-    def handle_start_run(self, message_data):
-        """Handle start_run message - run is starting, increase monitoring frequency."""
-        run_id = message_data.get('run_id')
-        self.logger.info("Fast monitoring start_run message", 
-                        extra={"run_id": run_id, "simulation_tick": message_data.get('simulation_tick')})
-        
-        # Send enhanced heartbeat with run context
-        self.send_fastmon_agent_heartbeat()
-        
-        # Perform scan at run start
-        self._process_files()
-        
-        self.logger.info("Fast monitoring active for run", extra={"run_id": run_id})
-    
-    def handle_end_run(self, message_data):
-        """Handle end_run message - run has ended, perform final scan."""
-        run_id = message_data.get('run_id')
-        total_files = message_data.get('total_files', 0)
-        self.logger.info("Fast monitoring end_run message", 
-                        extra={"run_id": run_id, "total_files": total_files, "simulation_tick": message_data.get('simulation_tick')})
-        
-        # Final scan for any remaining files
-        self._process_files()
-        
-        # Report final statistics via heartbeat
-        self.send_fastmon_agent_heartbeat()
-        
-        # Report completion status
-        self.report_agent_status('OK', f'Fast monitoring completed for run {run_id}')
-        
-        self.logger.info("Fast monitoring complete for run", 
-                        extra={"run_id": run_id, "files_processed": self.files_processed})
+
     
     def send_fastmon_agent_heartbeat(self):
         """Send enhanced heartbeat with fast monitoring context."""
