@@ -25,7 +25,7 @@ if swf_testbed_path.exists():
 else:
     print(f"Warning: swf-testbed example_agents path not found at {swf_testbed_path}")
 
-from base_agent import ExampleAgent
+from swf_common_lib.base_agent import BaseAgent
 
 # Configure Django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "swf_monitor_project.settings")
@@ -64,7 +64,7 @@ def main():
         agent.run()
 
 
-class FastMonitorAgent(ExampleAgent):
+class FastMonitorAgent(BaseAgent):
     """
     Agent that monitors directories for new STF files, samples TFs and records them in the database. Then broadcasts
     the selected files to message queues.
