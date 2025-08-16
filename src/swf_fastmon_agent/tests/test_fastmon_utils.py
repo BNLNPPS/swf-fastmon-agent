@@ -27,9 +27,6 @@ from swf_fastmon_agent.agents.fastmon_utils import (
     record_file,
 )
 
-# Django models
-from swf_fastmon_agent.database.models import Run, StfFile, FileStatus
-
 
 class TestSetupLogging:
     """Test the setup_logging function"""

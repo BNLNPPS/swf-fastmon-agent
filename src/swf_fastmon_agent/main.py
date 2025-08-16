@@ -14,16 +14,10 @@ import sys
 import time
 import django
 import json
-from pathlib import Path
 from datetime import datetime
 
-# Add the swf-testbed example_agents directory to Python path to import base_agent
-script_dir = Path(__file__).resolve().parent.parent.parent.parent
-swf_testbed_path = script_dir / "swf-testbed" / "example_agents"
-if swf_testbed_path.exists():
-    sys.path.insert(0, str(swf_testbed_path))
-else:
-    print(f"Warning: swf-testbed example_agents path not found at {swf_testbed_path}")
+# Import the centralized logging from swf-common-lib
+#from swf_common_lib.rest_logging import setup_rest_logging
 
 from swf_common_lib.base_agent import BaseAgent
 
@@ -32,36 +26,6 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "swf_monitor_project.settings")
 django.setup()
 
 from swf_fastmon_agent import fastmon_utils
-
-
-def main():
-    """Main entry point for the agent."""
-    # Example configuration - in production, this would come from config file
-    config = {
-        "watch_directories": [
-            "/Users/villanueva/tmp/DAQbuffer",
-        ],
-        "file_patterns": ["*.stf", "*.STF"],
-        "check_interval": 30,  # seconds
-        "lookback_time": 0,  # minutes
-        "selection_fraction": 0.1,  # 10% of files
-        "default_run_number": 1,
-        "base_url": "file://",
-        "calculate_checksum": True,
-    }
-
-    # Create agent with config
-    agent = FastMonitorAgent(config)
-
-    # Check if we should run in message-driven mode or continuous mode
-    mode = os.getenv('FASTMON_MODE', '').lower()
-
-    if mode == 'continuous':
-        # Run in continuous monitoring mode
-        agent.start_continuous_monitoring()
-    else:
-        # Run in message-driven mode (default, integrates with workflow)
-        agent.run()
 
 
 class FastMonitorAgent(BaseAgent):
@@ -84,9 +48,14 @@ class FastMonitorAgent(BaseAgent):
                 - default_run_number: Run number to use if not detected from filename
                 - base_url: Base URL for constructing file URLs
         """
+
         # Initialize base agent with fast monitoring specific parameters
-        super().__init__(agent_type='FASTMON', subscription_queue='fastmon_agent')
-        
+        super().__init__(agent_type='fastmon', subscription_queue='fastmon_agent')
+        self.running = True
+
+
+        self.logger.info("Fast Monitor Agent initialized with SOMETHING SOMETHING SOMETHING")
+
         # Set default config if none provided
         self.config = config or {
             "watch_directories": [
@@ -99,6 +68,11 @@ class FastMonitorAgent(BaseAgent):
             "default_run_number": 1,
             "base_url": "file://",
             "calculate_checksum": True,
+            # TF simulation parameters
+            "tf_files_per_stf": 7,  # Number of TF files to generate per STF
+            "tf_size_fraction": 0.15,  # Fraction of STF size for each TF
+            "tf_sequence_start": 1,  # Starting sequence number for TF files
+            "agent_name": "swf-fastmon-agent",  # Agent name for tracking
         }
         
         # Validate configuration
@@ -110,10 +84,16 @@ class FastMonitorAgent(BaseAgent):
         self.last_scan_time = None
         self.processing_stats = {'total_files': 0, 'selected_files': 0}
 
-    def _process_files(self):
-        """Process STF files in a single scan cycle."""
+    def _emulate_stf_registration_and_sampling(self):
+        """
+        NOTE: This method emulates the STF registration and TF sampling process for development purposes.
+        Process STF files in a single scan cycle, samples a fraction of TFs, and broadcasts them to message queues.
+        """
+
         try:
             self.last_scan_time = datetime.now()
+
+            tf_files_registered = []
             
             # Find the most recent STF files based on the time window set in the configuration
             recent_files = fastmon_utils.find_recent_files(self.config, self.logger)
@@ -123,29 +103,33 @@ class FastMonitorAgent(BaseAgent):
 
             self.processing_stats['total_files'] += len(recent_files)
 
-            # Select a fraction of files, emulating TF extraction for now (swf-testbed)
-            # FIXME: This should be replaced with actual TF extraction logic
-            selected_files = fastmon_utils.select_files(
-                recent_files, self.config["selection_fraction"], self.logger
-            )
-
-            self.processing_stats['selected_files'] += len(selected_files)
-
-            # Record selected files in the fast monitoring database
-            for file_path in selected_files:
-                fastmon_utils.record_file(file_path, self.config, self.logger)
+            # Register the files in the swf monitoring database as STF files
+            for file_path in recent_files:
+                stf_file = fastmon_utils.record_file(file_path, self.config, self.logger)
                 self.files_processed += 1
 
-            # Broadcast the selected files to message queues
-            if selected_files:
-                fastmon_utils.broadcast_files(selected_files, self.config, self.logger)
-                
-                # Report successful processing
-                self.report_agent_status('OK', f'Processed {len(selected_files)} files')
+                # Simulate TF subsamples for this STF file
+                tf_subsamples = fastmon_utils.simulate_tf_subsamples(stf_file, file_path, self.config, self.logger)
+
+                # Record each TF file in the FastMonFile table
+                tf_files_created = 0
+                for tf_metadata in tf_subsamples:
+                    tf_file = fastmon_utils.record_tf_file(stf_file, tf_metadata, self.config, self.logger)
+                    if tf_file:
+                        tf_files_created += 1
+                    tf_files_registered.append(tf_file)
+
+                self.logger.info(f"Created {tf_files_created} TF subsamples for STF file {stf_file.stf_filename}")
+
+            # Report successful processing
+            self.report_agent_status('OK', f'Emulating {len(tf_files_registered)} fast monitoring files')
+            return tf_files_registered
 
         except Exception as e:
             self.logger.error(f"Error in process cycle: {e}")
-            self.report_agent_status('ERROR', f'File processing error: {str(e)}')
+            self.report_agent_status('ERROR', f'Fast monitoring emulation error: {str(e)}')
+            return None
+
 
 
     def on_message(self, frame):
@@ -165,10 +149,8 @@ class FastMonitorAgent(BaseAgent):
             if msg_type == 'data_ready':
                 self.handle_scan_request(message_data)
             else:
-                self.logger.info("Ignoring unknown message type", extra={"msg_type": msg_type})
-                # Even for unknown messages, perform a directory scan
-                self._process_files()
-                
+                self.logger.warning("Ignoring unknown message type", extra={"msg_type": msg_type})
+
         except Exception as e:
             self.logger.error("Error processing message", extra={"error": str(e)})
             self.report_agent_status('ERROR', f'Message processing error: {str(e)}')
@@ -177,7 +159,7 @@ class FastMonitorAgent(BaseAgent):
         """Handle explicit directory scan request."""
         self.logger.info("Processing scan request")
         # TODO: Implement logic to handle data provided (for now it just scans the directory)
-        self._process_files()
+
         self.send_fastmon_agent_heartbeat()
 
     
@@ -193,12 +175,15 @@ class FastMonitorAgent(BaseAgent):
         return self.send_enhanced_heartbeat(workflow_metadata)
     
     def start_continuous_monitoring(self):
-        """ Start continuous file monitoring """
-        self.logger.info("Starting continuous fast monitoring...")
+        """
+        Start continuous file monitoring
+        NOTE: Intended for development and testing purposes.
+        """
+        self.logger.info("Starting continuous fast monitoring (DEV MODE)...")
         
         try:
             while True:
-                self._process_files()
+                tf_files_created = self._emulate_stf_registration_and_sampling()
                 self.send_fastmon_agent_heartbeat()
                 # Sleep for the configured interval
                 time.sleep(self.config["check_interval"])
@@ -210,6 +195,42 @@ class FastMonitorAgent(BaseAgent):
         finally:
             self.logger.info("Fast Monitor Agent stopped")
 
+
+
+def main():
+    """Main entry point for the agent."""
+    # Example configuration - in production, this would come from config file
+    # Watch directory is for testing purposes (continuous mode). In production, the agent should react to swf-data-agent messages
+    config = {
+        "watch_directories": [
+            "/Users/villanueva/tmp/DAQbuffer",
+        ],
+        "file_patterns": ["*.stf", "*.STF"],
+        "check_interval": 30,  # seconds
+        "lookback_time": 0,  # minutes
+        "selection_fraction": 0.1,  # 10% of files
+        "default_run_number": 1,
+        "base_url": "file://",
+        "calculate_checksum": True,
+        # TF simulation parameters
+        "tf_files_per_stf": 7,  # Number of TF files to generate per STF
+        "tf_size_fraction": 0.15,  # Fraction of STF size for each TF
+        "tf_sequence_start": 1,  # Starting sequence number for TF files
+        "agent_name": "swf-fastmon-agent",  # Agent name for tracking
+    }
+
+    # Create agent with config
+    agent = FastMonitorAgent(config)
+
+    # Check if we should run in message-driven mode or continuous mode
+    mode = os.getenv('FASTMON_MODE', '').lower()
+
+    if mode:
+        # Run in continuous monitoring mode
+        agent.start_continuous_monitoring()
+    else:
+        # Run in message-driven mode (default, integrates with workflow)
+        agent.run()
 
 
 if __name__ == "__main__":
