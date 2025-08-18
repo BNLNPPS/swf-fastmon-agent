@@ -12,7 +12,6 @@ Designed to run continuously under supervisord.
 import os
 import sys
 import time
-import django
 import json
 from datetime import datetime
 
@@ -20,11 +19,6 @@ from datetime import datetime
 #from swf_common_lib.rest_logging import setup_rest_logging
 
 from swf_common_lib.base_agent import BaseAgent
-
-# Configure Django
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "swf_monitor_project.settings")
-django.setup()
-
 from swf_fastmon_agent import fastmon_utils
 
 
@@ -53,8 +47,7 @@ class FastMonitorAgent(BaseAgent):
         super().__init__(agent_type='fastmon', subscription_queue='fastmon_agent')
         self.running = True
 
-
-        self.logger.info("Fast Monitor Agent initialized with SOMETHING SOMETHING SOMETHING")
+        self.logger.info("Fast Monitor Agent initialized successfully")
 
         # Set default config if none provided
         self.config = config or {
@@ -105,7 +98,7 @@ class FastMonitorAgent(BaseAgent):
 
             # Register the files in the swf monitoring database as STF files
             for file_path in recent_files:
-                stf_file = fastmon_utils.record_file(file_path, self.config, self.logger)
+                stf_file = fastmon_utils.record_file(file_path, self.config, self, self.logger)
                 self.files_processed += 1
 
                 # Simulate TF subsamples for this STF file
@@ -114,12 +107,12 @@ class FastMonitorAgent(BaseAgent):
                 # Record each TF file in the FastMonFile table
                 tf_files_created = 0
                 for tf_metadata in tf_subsamples:
-                    tf_file = fastmon_utils.record_tf_file(stf_file, tf_metadata, self.config, self.logger)
+                    tf_file = fastmon_utils.record_tf_file(stf_file, tf_metadata, self.config, self, self.logger)
                     if tf_file:
                         tf_files_created += 1
                     tf_files_registered.append(tf_file)
 
-                self.logger.info(f"Created {tf_files_created} TF subsamples for STF file {stf_file.stf_filename}")
+                self.logger.info(f"Created {tf_files_created} TF subsamples for STF file {stf_file['stf_filename']}")
 
             # Report successful processing
             self.report_agent_status('OK', f'Emulating {len(tf_files_registered)} fast monitoring files')

@@ -10,10 +10,15 @@ import random
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any
 
-# Django models
-from monitor_app.models import Run, StfFile, FileStatus
+# File status constants (matching Django FileStatus choices)
+class FileStatus:
+    REGISTERED = 'REGISTERED'
+    PROCESSING = 'PROCESSING'
+    PROCESSED = 'PROCESSED'
+    ERROR = 'ERROR'
+    ARCHIVED = 'ARCHIVED'
 
 
 def setup_logging(logger_name: str = "swf_fastmon_agent.file_monitor") -> logging.Logger:
@@ -174,29 +179,39 @@ def calculate_checksum(file_path: Path, logger: logging.Logger) -> str:
         return ""
 
 
-def get_or_create_run(run_number: int, logger: logging.Logger) -> Run:
+def get_or_create_run(run_number: int, agent, logger: logging.Logger) -> Dict[str, Any]:
     """
-    Get or create a Run object for the given run number.
+    Get or create a Run object for the given run number using REST API.
 
     Args:
         run_number: Run number
+        agent: BaseAgent instance for API access
         logger: Logger instance
 
     Returns:
-        Run object
+        Run data dictionary
     """
-    run, created = Run.objects.get_or_create(
-        run_number=run_number,
-        defaults={
-            "start_time": datetime.now(),
+    try:
+        # First try to get existing run
+        runs_response = agent.call_monitor_api('get', f'/runs/?run_number={run_number}')
+        if runs_response.get('results') and len(runs_response['results']) > 0:
+            logger.debug(f"Found existing run: {run_number}")
+            return runs_response['results'][0]
+        
+        # Create new run if not found
+        run_data = {
+            "run_number": run_number,
+            "start_time": datetime.now().isoformat(),
             "run_conditions": {"auto_created": True},
-        },
-    )
-
-    if created:
+        }
+        
+        new_run = agent.call_monitor_api('post', '/runs/', run_data)
         logger.info(f"Created new run: {run_number}")
-
-    return run
+        return new_run
+        
+    except Exception as e:
+        logger.error(f"Error getting or creating run {run_number}: {e}")
+        raise
 
 
 def construct_file_url(file_path: Path, base_url: str = "file://") -> str:
@@ -217,21 +232,28 @@ def construct_file_url(file_path: Path, base_url: str = "file://") -> str:
     return f"{base_url}/{abs_path}"
 
 
-def record_file(file_path: Path, config: dict, logger: logging.Logger) -> None:
+def record_file(file_path: Path, config: dict, agent, logger: logging.Logger) -> Dict[str, Any]:
     """
-    Record a file in the database.
+    Record a file in the database using REST API.
 
     Args:
         file_path: Path to the file to record
         config: Configuration dictionary
+        agent: BaseAgent instance for API access
         logger: Logger instance
+    
+    Returns:
+        STF file data dictionary
     """
     try:
         # Check if file already exists in database
         file_url = construct_file_url(file_path, config.get("base_url", "file://"))
-        if StfFile.objects.filter(file_url=file_url).exists():
+        
+        # Check if file already recorded
+        existing_files = agent.call_monitor_api('get', f'/stf-files/?file_url={file_url}')
+        if existing_files.get('results') and len(existing_files['results']) > 0:
             logger.debug(f"File already recorded: {file_path}")
-            return
+            return existing_files['results'][0]
 
         # Get file information
         file_stat = file_path.stat()
@@ -239,21 +261,22 @@ def record_file(file_path: Path, config: dict, logger: logging.Logger) -> None:
 
         # Extract run number and get/create run
         run_number = extract_run_number(file_path, config["default_run_number"])
-        run = get_or_create_run(run_number, logger)
+        run_data = get_or_create_run(run_number, agent, logger)
 
         # Calculate checksum (optional, can be expensive)
         checksum = ""
         if config.get("calculate_checksum", False):
             checksum = calculate_checksum(file_path, logger)
 
-        # Create STF file record
-        stf_file = StfFile.objects.create(
-            run=run,
-            file_url=file_url,
-            file_size_bytes=file_size,
-            checksum=checksum,
-            status=FileStatus.REGISTERED,
-            metadata={
+        # Create STF file record via API
+        stf_file_data = {
+            "run": run_data["run_id"],
+            "stf_filename": file_path.name,
+            "file_url": file_url,
+            "file_size_bytes": file_size,
+            "checksum": checksum,
+            "status": FileStatus.REGISTERED,
+            "metadata": {
                 "original_path": str(file_path),
                 "creation_time": datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
                 "modification_time": datetime.fromtimestamp(
@@ -261,12 +284,105 @@ def record_file(file_path: Path, config: dict, logger: logging.Logger) -> None:
                 ).isoformat(),
                 "agent_version": "1.0.0",
             },
-        )
+        }
 
-        logger.info(f"Recorded file: {file_path} -> {stf_file.file_id}")
+        stf_file = agent.call_monitor_api('post', '/stf-files/', stf_file_data)
+        logger.info(f"Recorded file: {file_path} -> {stf_file['file_id']}")
+        return stf_file
 
     except Exception as e:
         logger.error(f"Error recording file {file_path}: {e}")
+        raise
+
+
+def simulate_tf_subsamples(stf_file: Dict[str, Any], file_path: Path, config: dict, logger: logging.Logger) -> List[Dict[str, Any]]:
+    """
+    Simulate creation of Time Frame (TF) subsamples from a Super Time Frame (STF) file.
+    
+    Args:
+        stf_file: STF file data dictionary from REST API
+        file_path: Path to the original STF file
+        config: Configuration dictionary
+        logger: Logger instance
+        
+    Returns:
+        List of TF metadata dictionaries
+    """
+    try:
+        tf_files_per_stf = config.get("tf_files_per_stf", 7)
+        tf_size_fraction = config.get("tf_size_fraction", 0.15)
+        tf_sequence_start = config.get("tf_sequence_start", 1)
+        
+        tf_subsamples = []
+        stf_size = stf_file.get("file_size_bytes", 0)
+        base_filename = file_path.stem  # filename without extension
+        
+        for i in range(tf_files_per_stf):
+            sequence_number = tf_sequence_start + i
+            
+            # Generate TF filename based on STF filename
+            tf_filename = f"{base_filename}_tf_{sequence_number:03d}.tf"
+            
+            # Calculate TF file size as fraction of STF size with some randomness
+            tf_size = int(stf_size * tf_size_fraction * random.uniform(0.8, 1.2))
+            
+            # Create TF metadata
+            tf_metadata = {
+                "tf_filename": tf_filename,
+                "file_size_bytes": tf_size,
+                "sequence_number": sequence_number,
+                "stf_parent": stf_file["file_id"],
+                "metadata": {
+                    "simulation": True,
+                    "created_from": str(file_path),
+                    "sequence_number": sequence_number,
+                    "tf_size_fraction": tf_size_fraction,
+                    "agent_name": config.get("agent_name", "swf-fastmon-agent"),
+                }
+            }
+            
+            tf_subsamples.append(tf_metadata)
+        
+        logger.info(f"Generated {len(tf_subsamples)} TF subsamples for STF {stf_file['stf_filename']}")
+        return tf_subsamples
+        
+    except Exception as e:
+        logger.error(f"Error simulating TF subsamples for {file_path}: {e}")
+        return []
+
+
+def record_tf_file(stf_file: Dict[str, Any], tf_metadata: Dict[str, Any], config: dict, agent, logger: logging.Logger) -> Dict[str, Any]:
+    """
+    Record a Time Frame (TF) file in the database using REST API.
+    
+    Args:
+        stf_file: Parent STF file data dictionary
+        tf_metadata: TF metadata dictionary from simulate_tf_subsamples
+        config: Configuration dictionary
+        agent: BaseAgent instance for API access
+        logger: Logger instance
+        
+    Returns:
+        FastMonFile data dictionary or None if failed
+    """
+    try:
+        # Prepare FastMonFile data for API
+        tf_file_data = {
+            "stf_file": stf_file["file_id"],
+            "tf_filename": tf_metadata["tf_filename"],
+            "file_size_bytes": tf_metadata["file_size_bytes"],
+            "status": FileStatus.REGISTERED,
+            "metadata": tf_metadata.get("metadata", {})
+        }
+        
+        # Create TF file record via FastMonFile API
+        tf_file = agent.call_monitor_api('post', '/fastmon-files/', tf_file_data)
+        logger.debug(f"Recorded TF file: {tf_metadata['tf_filename']} -> {tf_file['tf_file_id']}")
+        return tf_file
+        
+    except Exception as e:
+        logger.error(f"Error recording TF file {tf_metadata['tf_filename']}: {e}")
+        return None
 
 
 def broadcast_files(selected_files: list, config: dict, logger: logging.Logger) -> None:
