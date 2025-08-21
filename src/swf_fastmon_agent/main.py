@@ -87,20 +87,30 @@ class FastMonitorAgent(BaseAgent):
 
         try:
             self.last_scan_time = datetime.now()
-
             tf_files_registered = []
-            
+            self.logger.debug("Starting STF file registration and TF sampling process")
             # Find the most recent STF files based on the time window set in the configuration
             recent_files = fastmon_utils.find_recent_files(self.config, self.logger)
             if not recent_files:
-                self.logger.debug("No recent files found")
+                self.logger.warning("No recent files found")
                 return
-
+            self.logger.debug(f"Found {len(recent_files)} STF files to process")
             self.processing_stats['total_files'] += len(recent_files)
+
+            # Sample a fraction of the files based on the selection fraction
+            if self.config['selection_fraction'] < 1.0:
+                self.logger.debug(f"Sampling {self.config['selection_fraction'] * 100}% of recent files")
+                recent_files = fastmon_utils.sample_files(recent_files, self.config['selection_fraction'], self.logger)
+
+            # For TEST, kee only the first 2 files
+            if len(recent_files) > 2:
+                self.logger.warning(f"TEST MODE: Limiting processing to first 2 files for testing purposes")
+                recent_files = recent_files[:2]
 
             # Register the files in the swf monitoring database as STF files
             for file_path in recent_files:
-                stf_file = fastmon_utils.record_file(file_path, self.config, self, self.logger)
+                self.logger.debug(f"Processing {file_path} for registration and sampling")
+                stf_file = fastmon_utils.record_stf_file(file_path, self.config, self, self.logger)
                 self.files_processed += 1
 
                 # Simulate TF subsamples for this STF file
@@ -114,7 +124,7 @@ class FastMonitorAgent(BaseAgent):
                         tf_files_created += 1
                     tf_files_registered.append(tf_file)
 
-                self.logger.info(f"Created {tf_files_created} TF subsamples for STF file {stf_file['stf_filename']}")
+                self.logger.info(f"Registered {tf_files_created} TF subsamples for STF file {stf_file['stf_filename']}")
 
             # Report successful processing
             self.report_agent_status('OK', f'Emulating {len(tf_files_registered)} fast monitoring files')

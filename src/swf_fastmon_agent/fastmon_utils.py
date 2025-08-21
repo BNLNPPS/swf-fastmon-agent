@@ -60,7 +60,7 @@ def validate_config(config: dict) -> None:
 
 def find_recent_files(config: dict, logger: logging.Logger) -> List[Path]:
     """
-    Find files created within the lookback time period.
+    Find files in the watch directories, created within the lookback time period.
 
     Args:
         config: Configuration dictionary
@@ -71,17 +71,16 @@ def find_recent_files(config: dict, logger: logging.Logger) -> List[Path]:
     """
     cutoff_timestamp = None
     if config["lookback_time"]:
+        logger.debug(f"Looking for files created in the last {config['lookback_time']} minutes")
         cutoff_time = datetime.now() - timedelta(minutes=config["lookback_time"])
         cutoff_timestamp = cutoff_time.timestamp()
 
     matching_files = []
-
     for directory in config["watch_directories"]:
         dir_path = Path(directory)
         if not dir_path.exists():
-            logger.warning(f"Watch directory does not exist: {directory}")
+            logger.error(f"Watch directory does not exist: {directory}")
             continue
-
         try:
             for pattern in config["file_patterns"]:
                 for file_path in dir_path.glob(pattern):
@@ -96,11 +95,10 @@ def find_recent_files(config: dict, logger: logging.Logger) -> List[Path]:
 
         except Exception as e:
             logger.error(f"Error scanning directory {directory}: {e}")
-
     return matching_files
 
 
-def select_files(
+def sample_files(
     files: List[Path], selection_fraction: float, logger: logging.Logger
 ) -> List[Path]:
     """
@@ -118,11 +116,9 @@ def select_files(
         return []
 
     selection_count = max(1, int(len(files) * selection_fraction))
-
     # Use random selection
     selected = random.sample(files, min(selection_count, len(files)))
-
-    logger.info(f"Selected {len(selected)} files out of {len(files)} candidates")
+    logger.debug(f"Selected {len(selected)} files out of {len(files)} candidates")
     return selected
 
 
@@ -238,9 +234,11 @@ def construct_file_url(file_path: Path, base_url: str = "file://") -> str:
     return f"{base_url}/{abs_path}"
 
 
-def record_file(file_path: Path, config: dict, agent, logger: logging.Logger) -> Dict[str, Any]:
+def record_stf_file(file_path: Path, config: dict, agent, logger: logging.Logger) -> Dict[str, Any]:
     """
     Record a file in the database using REST API.
+
+    Note: For development purposes, agent in production should react to the data agent with STF files already registeed
 
     Args:
         file_path: Path to the file to record
@@ -255,18 +253,7 @@ def record_file(file_path: Path, config: dict, agent, logger: logging.Logger) ->
         # Check if file already exists in database
         file_url = construct_file_url(file_path, config.get("base_url", "file://"))
         
-        # Check if file already recorded (using stf_filename parameter after migration 0016)
-        stf_filename = file_path.name
-        existing_files = agent.call_monitor_api('get', f'/stf-files/?stf_filename={stf_filename}')
-        
-        # Handle both paginated response (dict with 'results') and direct list response
-        if isinstance(existing_files, dict) and existing_files.get('results'):
-            if len(existing_files['results']) > 0:
-                logger.debug(f"File already recorded: {file_path}")
-                return existing_files['results'][0]
-        elif isinstance(existing_files, list) and len(existing_files) > 0:
-            logger.debug(f"File already recorded: {file_path}")
-            return existing_files[0]
+        # TODO: Check if file already recorded
 
         # Get file information
         file_stat = file_path.stat()
@@ -355,8 +342,7 @@ def simulate_tf_subsamples(stf_file: Dict[str, Any], file_path: Path, config: di
             }
             
             tf_subsamples.append(tf_metadata)
-        
-        logger.info(f"Generated {len(tf_subsamples)} TF subsamples for STF {stf_file['stf_filename']}")
+
         return tf_subsamples
         
     except Exception as e:
