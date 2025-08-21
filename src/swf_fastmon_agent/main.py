@@ -47,6 +47,8 @@ class FastMonitorAgent(BaseAgent):
         super().__init__(agent_type='fastmon', subscription_queue='fastmon_agent')
         self.running = True
 
+
+
         self.logger.info("Fast Monitor Agent initialized successfully")
 
         # Set default config if none provided

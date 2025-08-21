@@ -14,11 +14,11 @@ from typing import List, Dict, Any
 
 # File status constants (matching Django FileStatus choices)
 class FileStatus:
-    REGISTERED = 'REGISTERED'
-    PROCESSING = 'PROCESSING'
-    PROCESSED = 'PROCESSED'
-    ERROR = 'ERROR'
-    ARCHIVED = 'ARCHIVED'
+    REGISTERED = 'registered'
+    PROCESSING = 'processing'
+    PROCESSED = 'processed'
+    FAILED = 'failed'
+    DONE = 'done'
 
 
 def setup_logging(logger_name: str = "swf_fastmon_agent.file_monitor") -> logging.Logger:
@@ -194,9 +194,15 @@ def get_or_create_run(run_number: int, agent, logger: logging.Logger) -> Dict[st
     try:
         # First try to get existing run
         runs_response = agent.call_monitor_api('get', f'/runs/?run_number={run_number}')
-        if runs_response.get('results') and len(runs_response['results']) > 0:
+        
+        # Handle both paginated response (dict with 'results') and direct list response
+        if isinstance(runs_response, dict) and runs_response.get('results'):
+            if len(runs_response['results']) > 0:
+                logger.debug(f"Found existing run: {run_number}")
+                return runs_response['results'][0]
+        elif isinstance(runs_response, list) and len(runs_response) > 0:
             logger.debug(f"Found existing run: {run_number}")
-            return runs_response['results'][0]
+            return runs_response[0]
         
         # Create new run if not found
         run_data = {
@@ -249,11 +255,18 @@ def record_file(file_path: Path, config: dict, agent, logger: logging.Logger) ->
         # Check if file already exists in database
         file_url = construct_file_url(file_path, config.get("base_url", "file://"))
         
-        # Check if file already recorded
-        existing_files = agent.call_monitor_api('get', f'/stf-files/?file_url={file_url}')
-        if existing_files.get('results') and len(existing_files['results']) > 0:
+        # Check if file already recorded (using stf_filename parameter after migration 0016)
+        stf_filename = file_path.name
+        existing_files = agent.call_monitor_api('get', f'/stf-files/?stf_filename={stf_filename}')
+        
+        # Handle both paginated response (dict with 'results') and direct list response
+        if isinstance(existing_files, dict) and existing_files.get('results'):
+            if len(existing_files['results']) > 0:
+                logger.debug(f"File already recorded: {file_path}")
+                return existing_files['results'][0]
+        elif isinstance(existing_files, list) and len(existing_files) > 0:
             logger.debug(f"File already recorded: {file_path}")
-            return existing_files['results'][0]
+            return existing_files[0]
 
         # Get file information
         file_stat = file_path.stat()
@@ -272,12 +285,12 @@ def record_file(file_path: Path, config: dict, agent, logger: logging.Logger) ->
         stf_file_data = {
             "run": run_data["run_id"],
             "stf_filename": file_path.name,
-            "file_url": file_url,
             "file_size_bytes": file_size,
             "checksum": checksum,
             "status": FileStatus.REGISTERED,
             "metadata": {
                 "original_path": str(file_path),
+                "file_url": file_url,  # Store original file_url in metadata instead
                 "creation_time": datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
                 "modification_time": datetime.fromtimestamp(
                     file_stat.st_mtime
@@ -286,7 +299,7 @@ def record_file(file_path: Path, config: dict, agent, logger: logging.Logger) ->
             },
         }
 
-        stf_file = agent.call_monitor_api('post', '/stf-files/', stf_file_data)
+        stf_file = agent.call_monitor_api('POST', '/stf-files/', stf_file_data)
         logger.info(f"Recorded file: {file_path} -> {stf_file['file_id']}")
         return stf_file
 
