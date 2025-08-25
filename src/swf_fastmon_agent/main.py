@@ -28,7 +28,7 @@ class FastMonitorAgent(BaseAgent):
     the selected files to message queues.
     """
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict):
         """
         Initialize the file monitor agent.
 
@@ -47,28 +47,10 @@ class FastMonitorAgent(BaseAgent):
         super().__init__(agent_type='fastmon', subscription_queue='fastmon_agent')
         self.running = True
 
-
-
         self.logger.info("Fast Monitor Agent initialized successfully")
 
-        # Set default config if none provided
-        self.config = config or {
-            "watch_directories": [
-                "/Users/villanueva/tmp/DAQbuffer",
-            ],
-            "file_patterns": ["*.stf", "*.STF"],
-            "check_interval": 30,  # seconds
-            "lookback_time": 0,  # minutes
-            "selection_fraction": 0.1,  # 10% of files
-            "default_run_number": 1,
-            "base_url": "file://",
-            "calculate_checksum": True,
-            # TF simulation parameters
-            "tf_files_per_stf": 7,  # Number of TF files to generate per STF
-            "tf_size_fraction": 0.15,  # Fraction of STF size for each TF
-            "tf_sequence_start": 1,  # Starting sequence number for TF files
-            "agent_name": "swf-fastmon-agent",  # Agent name for tracking
-        }
+        # TODO: Validate config parameters
+        self.config = config
         
         # Validate configuration
         fastmon_utils.validate_config(self.config)
@@ -122,6 +104,8 @@ class FastMonitorAgent(BaseAgent):
                     tf_file = fastmon_utils.record_tf_file(stf_file, tf_metadata, self.config, self, self.logger)
                     if tf_file:
                         tf_files_created += 1
+                        # Send notification to clients about new TF file
+                        self._send_tf_file_notification(tf_file, stf_file)
                     tf_files_registered.append(tf_file)
 
                 self.logger.info(f"Registered {tf_files_created} TF subsamples for STF file {stf_file['stf_filename']}")
@@ -135,7 +119,38 @@ class FastMonitorAgent(BaseAgent):
             self.report_agent_status('ERROR', f'Fast monitoring emulation error: {str(e)}')
             return None
 
-
+    def _send_tf_file_notification(self, tf_file: dict, stf_file: dict):
+        """
+        Send notification to clients about a newly registered TF file.
+        
+        Args:
+            tf_file: TF file data from the FastMonFile API
+            stf_file: Parent STF file data
+        """
+        try:
+            # Extract run number from STF file metadata
+            run_number = stf_file.get('run', {}).get('run_number') if isinstance(stf_file.get('run'), dict) else stf_file.get('run')
+            
+            message = {
+                "msg_type": "tf_file_registered",
+                "tf_file_id": tf_file.get('tf_file_id'),
+                "tf_filename": tf_file.get('tf_filename'),
+                "file_size_bytes": tf_file.get('file_size_bytes'),
+                "stf_filename": stf_file.get('stf_filename'),
+                "run_number": run_number,
+                "status": tf_file.get('status'),
+                "timestamp": datetime.now().isoformat(),
+                "agent_name": self.config.get('agent_name', 'swf-fastmon-agent')
+            }
+            
+            # Send message to client topic
+            topic_name = self.config.get('fastmon_client_topic', '/topic/fastmon_client')
+            self.send_message(topic_name, message)
+            
+            self.logger.debug(f"Sent TF file notification: {tf_file.get('tf_filename')} to topic {topic_name}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to send TF file notification: {e}")
 
     def on_message(self, frame):
         """
@@ -144,7 +159,7 @@ class FastMonitorAgent(BaseAgent):
         """
         self.logger.info("Fast Monitor Agent received message")
         # Update heartbeat on message activity
-        self.send_fastmon_agent_heartbeat()
+        self.send_heartbeat()
         
         try:
             message_data = json.loads(frame.body)
@@ -159,25 +174,15 @@ class FastMonitorAgent(BaseAgent):
         except Exception as e:
             self.logger.error("Error processing message", extra={"error": str(e)})
             self.report_agent_status('ERROR', f'Message processing error: {str(e)}')
-    
+
+
     def handle_scan_request(self, message_data):
         """Handle explicit directory scan request."""
         self.logger.info("Processing scan request")
         # TODO: Implement logic to handle data provided (for now it just scans the directory)
 
-        self.send_fastmon_agent_heartbeat()
+        self.send_heartbeat()
 
-    
-    def send_fastmon_agent_heartbeat(self):
-        """Send enhanced heartbeat with fast monitoring context."""
-        workflow_metadata = {
-            'files_processed': self.files_processed,
-            'last_scan': self.last_scan_time.isoformat() if self.last_scan_time else None,
-            'total_files_seen': self.processing_stats['total_files'],
-            'selected_files': self.processing_stats['selected_files']
-        }
-        
-        return self.send_enhanced_heartbeat(workflow_metadata)
     
     def start_continuous_monitoring(self):
         """
@@ -189,7 +194,7 @@ class FastMonitorAgent(BaseAgent):
         try:
             while True:
                 tf_files_created = self._emulate_stf_registration_and_sampling()
-                self.send_fastmon_agent_heartbeat()
+                self.send_heartbeat()
                 # Sleep for the configured interval
                 time.sleep(self.config["check_interval"])
         except KeyboardInterrupt:
@@ -222,6 +227,8 @@ def main():
         "tf_size_fraction": 0.15,  # Fraction of STF size for each TF
         "tf_sequence_start": 1,  # Starting sequence number for TF files
         "agent_name": "swf-fastmon-agent",  # Agent name for tracking
+        # Messaging configuration
+        "fastmon_client_topic": "/topic/fastmon_client",  # Topic for client notifications
     }
 
     # Create agent with config

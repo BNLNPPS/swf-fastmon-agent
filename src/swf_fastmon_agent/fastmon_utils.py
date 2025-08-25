@@ -21,24 +21,6 @@ class FileStatus:
     DONE = 'done'
 
 
-def setup_logging(logger_name: str = "swf_fastmon_agent.file_monitor") -> logging.Logger:
-    """Setup logging configuration."""
-    # TODO: Switch to SWF common logging
-
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.INFO)
-
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-
-    return logger
-
-
 def validate_config(config: dict) -> None:
     """Validate the configuration parameters."""
     required_keys = [
@@ -238,7 +220,7 @@ def record_stf_file(file_path: Path, config: dict, agent, logger: logging.Logger
     """
     Record a file in the database using REST API.
 
-    Note: For development purposes, agent in production should react to the data agent with STF files already registeed
+    Note: For development purposes, agent in production should react to the data agent with STF files already registered
 
     Args:
         file_path: Path to the file to record
@@ -382,18 +364,3 @@ def record_tf_file(stf_file: Dict[str, Any], tf_metadata: Dict[str, Any], config
     except Exception as e:
         logger.error(f"Error recording TF file {tf_metadata['tf_filename']}: {e}")
         return None
-
-
-def broadcast_files(selected_files: list, config: dict, logger: logging.Logger) -> None:
-    """
-    Broadcast a message to the Active MQ.
-
-    Args:
-        selected_files: List with metadata of selected file paths to broadcast
-        config: Configuration dictionary
-        logger: Logger instance
-    """
-
-    # Placeholder for actual broadcast logic
-
-    # message_queue.send(message)

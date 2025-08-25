@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for fastmon_utils.py REST API functions.
+Unit tests for fastmon_utils.py utilities and REST helpers.
 """
 
 import pytest
@@ -16,7 +16,12 @@ from swf_fastmon_agent.fastmon_utils import (
     record_stf_file,
     simulate_tf_subsamples,
     record_tf_file,
-    FileStatus
+    find_recent_files,
+    sample_files,
+    extract_run_number,
+    calculate_checksum,
+    construct_file_url,
+    FileStatus,
 )
 
 
@@ -66,70 +71,100 @@ class TestGetOrCreateRun:
         assert post_call[0][2]['run_number'] == 99
         assert 'auto_created' in post_call[0][2]['run_conditions']
 
+    def test_get_existing_run_list_response(self):
+        """Support list responses as returned by some endpoints."""
+        mock_agent = Mock()
+        mock_logger = Mock()
 
-class TestRecordFile:
-    """Tests for record_file function."""
+        # API returns a list directly
+        mock_agent.call_monitor_api.return_value = [
+            {'run_id': 7, 'run_number': 7}
+        ]
 
-    def test_record_new_file(self):
-        """Test recording a new STF file via REST API."""
-        # Create a temporary file for testing
+        result = get_or_create_run(7, mock_agent, mock_logger)
+        mock_agent.call_monitor_api.assert_called_once_with('get', '/runs/?run_number=7')
+        assert result['run_id'] == 7
+
+
+class TestRecordStfFile:
+    """Tests for record_stf_file helper."""
+
+    def test_record_new_file_posts_payload(self):
+        """Record a new STF file; verify payload and method casing."""
         with tempfile.NamedTemporaryFile(suffix='.stf', delete=False) as tf:
             tf.write(b'test data')
             temp_file_path = Path(tf.name)
-        
+
         try:
-            # Mock agent and logger
             mock_agent = Mock()
             mock_logger = Mock()
-            
-            # Mock API responses
-            mock_agent.call_monitor_api.side_effect = [
-                {'results': []},  # File doesn't exist
-                {'run_id': 123, 'run_number': 1},  # Run data
-                {'file_id': 'uuid-123', 'stf_filename': temp_file_path.name}  # STF file created
-            ]
-            
+
+            # Mock POST response from API
+            mock_agent.call_monitor_api.return_value = {
+                'file_id': 'uuid-123', 'stf_filename': temp_file_path.name
+            }
+
             config = {
                 'base_url': 'file://',
                 'default_run_number': 1,
-                'calculate_checksum': False
+                'calculate_checksum': False,
             }
-            
-            # Mock get_or_create_run
+
+            # Bypass run creation logic
             with patch('swf_fastmon_agent.fastmon_utils.get_or_create_run') as mock_get_run:
                 mock_get_run.return_value = {'run_id': 123, 'run_number': 1}
-                
                 result = record_stf_file(temp_file_path, config, mock_agent, mock_logger)
-            
-            # Verify file was recorded
+
             assert result['file_id'] == 'uuid-123'
-            assert mock_agent.call_monitor_api.call_count >= 2
-            
+
+            # Verify a single POST call with expected keys
+            mock_agent.call_monitor_api.assert_called_once()
+            method, path, payload = mock_agent.call_monitor_api.call_args[0]
+            assert method == 'POST'
+            assert path == '/stf-files/'
+            assert payload['run'] == 123
+            assert payload['stf_filename'] == temp_file_path.name
+            assert payload['status'] == FileStatus.REGISTERED
+            assert payload['checksum'] == ''
+            assert 'file_size_bytes' in payload and payload['file_size_bytes'] > 0
+            assert payload['metadata']['file_url'].startswith('file://')
+
         finally:
-            # Clean up temporary file
             if temp_file_path.exists():
                 temp_file_path.unlink()
 
-    def test_record_existing_file(self):
-        """Test handling of already recorded files."""
-        temp_file_path = Path('/tmp/test.stf')
-        
-        # Mock agent and logger
-        mock_agent = Mock()
-        mock_logger = Mock()
-        
-        # Mock API response for existing file
-        mock_agent.call_monitor_api.return_value = {
-            'results': [{'file_id': 'existing-uuid', 'stf_filename': 'test.stf'}]
-        }
-        
-        config = {'base_url': 'file://', 'default_run_number': 1}
-        
-        result = record_stf_file(temp_file_path, config, mock_agent, mock_logger)
-        
-        # Should return existing file without creating new one
-        assert result['file_id'] == 'existing-uuid'
-        mock_agent.call_monitor_api.assert_called_once()
+    def test_record_new_file_checksum(self):
+        """When checksum is enabled, include MD5 in payload."""
+        content = b'checksum test data\n'
+        with tempfile.NamedTemporaryFile(suffix='.stf', delete=False) as tf:
+            tf.write(content)
+            temp_file_path = Path(tf.name)
+
+        try:
+            mock_agent = Mock()
+            mock_logger = Mock()
+            mock_agent.call_monitor_api.return_value = {
+                'file_id': 'uuid-ck', 'stf_filename': temp_file_path.name
+            }
+
+            config = {
+                'base_url': 'file://',
+                'default_run_number': 1,
+                'calculate_checksum': True,
+            }
+
+            with patch('swf_fastmon_agent.fastmon_utils.get_or_create_run') as mock_get_run:
+                mock_get_run.return_value = {'run_id': 55, 'run_number': 55}
+                record_stf_file(temp_file_path, config, mock_agent, mock_logger)
+
+            # Inspect posted payload
+            _, _, payload = mock_agent.call_monitor_api.call_args[0]
+            expected_md5 = calculate_checksum(temp_file_path, mock_logger)
+            assert payload['checksum'] == expected_md5
+
+        finally:
+            if temp_file_path.exists():
+                temp_file_path.unlink()
 
 
 class TestSimulateTfSubsamples:
@@ -248,3 +283,52 @@ class TestRecordTfFile:
         # Should return None on failure
         assert result is None
         mock_logger.error.assert_called_once()
+
+
+class TestMiscUtilities:
+    """Tests for standalone utility helpers."""
+
+    def test_extract_run_number_patterns(self):
+        assert extract_run_number(Path('run_12345_stf_001.stf'), 1) == 12345
+        assert extract_run_number(Path('run9999.stf'), 1) == 9999
+        assert extract_run_number(Path('r77_data.stf'), 1) == 77
+        assert extract_run_number(Path('no_run_here.stf'), 5) == 5
+
+    def test_construct_file_url(self, tmp_path):
+        f = tmp_path / 'a.stf'
+        f.write_text('x')
+        url = construct_file_url(f, 'file://')
+        assert url.startswith('file://') and f.name in url
+
+    def test_calculate_checksum(self, tmp_path):
+        f = tmp_path / 'data.stf'
+        content = b'abcdefg'
+        f.write_bytes(content)
+        cs = calculate_checksum(f, logging.getLogger(__name__))
+        import hashlib as _hashlib
+
+        assert cs == _hashlib.md5(content).hexdigest()
+
+    def test_find_recent_files_and_sample(self, tmp_path):
+        # Create files
+        files = []
+        for i in range(5):
+            p = tmp_path / f'f{i}.stf'
+            p.write_text('data')
+            files.append(p)
+
+        config = {
+            'watch_directories': [str(tmp_path)],
+            'file_patterns': ['*.stf'],
+            'check_interval': 1,
+            'lookback_time': 0,
+            'selection_fraction': 0.4,
+            'default_run_number': 1,
+        }
+
+        found = find_recent_files(config, logging.getLogger(__name__))
+        assert set(found) == set(files)
+
+        # Sample ~40% => 2 files (min 1)
+        sampled = sample_files(found, config['selection_fraction'], logging.getLogger(__name__))
+        assert len(sampled) == 2

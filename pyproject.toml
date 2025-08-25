@@ -12,6 +12,8 @@ dependencies = [
     "Django>=4.2,<5.0",
     "psycopg>=3.2.0",
     "psycopg2-binary>=2.9.0",
+    "typer>=0.9.0",
+    "stomp.py>=8.1.0",
     # This is a dependency from our other local package
     #"swf-common-lib",
     #"supervisor"
@@ -38,6 +40,6 @@ Repository = "https://github.com/BNLNPPS/swf-fastmon-agent/"
 package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["swf_fastmon_agent*"]
+include = ["swf_fastmon_agent*", "swf_fastmon_client*"]
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "swf_monitor_project.settings"
