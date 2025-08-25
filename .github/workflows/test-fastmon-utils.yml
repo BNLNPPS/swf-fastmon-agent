@@ -26,5 +26,5 @@ jobs:
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'  # avoid loading external pytest plugins
         run: |
-          pytest -q src/swf_fastmon_agent/tests/test_fastmon_utils.py -p no:django
+          pytest -vs -q src/swf_fastmon_agent/tests/test_fastmon_utils.py
 
