@@ -1,17 +1,18 @@
 # SWF Fast Monitoring Agent
 
-**`swf-fastmon-agent`** is a fast monitoring service for the ePIC streaming workflow testbed. 
+**`swf-fastmon-agent`** is a fast monitoring service for the ePIC streaming workflow testbed.
 
-This agent pulls metadata of Time Frames (TF) and distributes the information via ActiveMQ message queues, enabling real-time remote monitoring of ePIC data acquisition processes.
+This agent monitors STF (Super Time Frame) files, samples TF (Time Frame) subsets, and distributes metadata via ActiveMQ message queues, enabling real-time remote monitoring of ePIC data acquisition processes. The agent includes both server-side monitoring capabilities and a client for remote visualization.
 
 ## Architecture Overview
 
 The fast monitoring agent is designed as part of the **SWF testbed ecosystem** and integrates with:
 - **swf-monitor**: PostgreSQL database and Django web interface for persistent monitoring data
-- **swf-testbed**: Infrastructure orchestration and process management
+- **swf-testbed**: Infrastructure orchestration and process management  
+- **swf-common-lib**: Shared utilities and BaseAgent framework for messaging
 - **swf-data-agent**: Receiving messages when STF files are available for fast monitoring
 
-The agent operates as a managed service within the swf-testbed ecosystem, automatically configured and monitored through the central CLI.
+The agent operates as a managed service within the swf-testbed ecosystem, automatically configured and monitored through the central CLI. It extends the BaseAgent class from swf-common-lib for consistent messaging and logging across the ecosystem.
 
 -------------- 
 
@@ -28,8 +29,13 @@ The agent operates as a managed service within the swf-testbed ecosystem, automa
 cd $SWF_PARENT_DIR/swf-testbed
 swf-testbed status  # Check if fast monitoring agent is running
 
-# Manual development run (for testing)
+# Manual development run (message-driven mode - default)
 cd ../swf-fastmon-agent
+python -m swf_fastmon_agent.main
+
+# Continuous monitoring mode (for testing)
+cd ../swf-fastmon-agent
+export FASTMON_MODE=continuous 
 python -m swf_fastmon_agent.main
 ```
 
@@ -54,18 +60,29 @@ The fast monitoring agent is configured through the swf-testbed ecosystem:
 
 ## Agent Components
 
-- **Metadata Extraction**: Pulls Time Frame metadata from data acquisition systems
-- **Message Publishing**: Distributes metadata via ActiveMQ to registered subscribers
-- **Database Integration**: Stores monitoring data in swf-monitor PostgreSQL database
-- **Subscriber Management**: Handles subscription requests and message routing
-- **Status Reporting**: Provides health checks and performance metrics
+### Fast Monitor Agent
+- **STF File Monitoring**: Monitors directories for newly created STF files
+- **TF Sampling**: Simulates TF subsamples from STF files based on configuration
+- **Database Integration**: Records STF and TF metadata in swf-monitor PostgreSQL database
+- **Message Broadcasting**: Distributes TF file notifications via ActiveMQ to clients
+- **Dual Operation Modes**: 
+  - **Message-driven mode**: Responds to data_ready messages from swf-data-agent
+  - **Continuous mode**: Periodically scans directories (for development/testing)
+- **Status Reporting**: Provides health checks and performance metrics via BaseAgent
+
+### Fast Monitoring Client 
+- **Real-time Display**: Receives and displays TF file notifications in terminal
+- **Statistics Tracking**: Monitors per-run TF counts and data volume
+- **Graceful Shutdown**: Handles Ctrl+C with summary statistics
+- **Configurable Connection**: Supports SSL and custom ActiveMQ settings
 
 ### Data Flow
-1. **Data Acquisition**: Monitors ePIC DAQ systems for new Time Frame files
-2. **Metadata Processing**: Extracts file metadata, checksums, and run conditions
-3. **Message Distribution**: Publishes to ActiveMQ topics for real-time monitoring
-4. **Database Storage**: Persists metadata in swf-monitor for historical analysis
-5. **Web Interface**: Accessible via swf-monitor Django web application
+1. **STF File Detection**: Agent monitors directories for new STF files or receives data_ready messages
+2. **TF Simulation**: Generates TF subsamples from STF files based on configuration parameters
+3. **Database Recording**: Records both STF and TF metadata in swf-monitor database via REST API
+4. **Client Notification**: Broadcasts TF file notifications to `/topic/fastmon_client` 
+5. **Real-time Display**: Client receives notifications and displays formatted TF information
+6. **Historical Access**: All data accessible via swf-monitor Django web application
 
 ## Development and Testing
 
@@ -77,7 +94,8 @@ cd $SWF_PARENT_DIR/swf-testbed
 
 # Test agent integration specifically
 cd ../swf-fastmon-agent
-python -m pytest tests/
+python -m pytest src/swf_fastmon_agent/tests/
+
 
 # Check agent status in testbed
 swf-testbed status
@@ -88,7 +106,6 @@ swf-testbed status
 # Format and lint (from swf-fastmon-agent directory)
 black .
 flake8 .
-
 ```
 
 ## Development Guidelines
