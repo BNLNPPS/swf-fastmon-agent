@@ -9,8 +9,8 @@ import hashlib
 import random
 import re
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import List, Dict, Any
+
 
 # File status constants (matching Django FileStatus choices)
 class FileStatus:
@@ -22,14 +22,9 @@ class FileStatus:
 
 
 def validate_config(config: dict) -> None:
-    """Validate the configuration parameters."""
+    """Validate the configuration parameters for message-driven agent."""
     required_keys = [
-        "watch_directories",
-        "file_patterns",
-        "check_interval",
-        "lookback_time",
         "selection_fraction",
-        "default_run_number",
     ]
 
     for key in required_keys:
@@ -135,12 +130,13 @@ def extract_run_number(file_path: Path, default_run_number: int) -> int:
     return default_run_number
 
 
-def calculate_checksum(file_path: Path, logger: logging.Logger) -> str:
+
+def calculate_checksum(file_path: str, logger: logging.Logger) -> str:
     """
     Calculate MD5 checksum of file.
 
     Args:
-        file_path: Path to the file
+        file_path: Path to the file as string
         logger: Logger instance
 
     Returns:
@@ -277,7 +273,8 @@ def record_stf_file(file_path: Path, config: dict, agent, logger: logging.Logger
         raise
 
 
-def simulate_tf_subsamples(stf_file: Dict[str, Any], config: dict, logger: logging.Logger) -> List[Dict[str, Any]]:
+def simulate_tf_subsamples(stf_file: Dict[str, Any], config: dict, logger: logging.Logger, agent_name: str) -> List[
+    Dict[str, Any]]:
     """
     Simulate creation of Time Frame (TF) subsamples from a Super Time Frame (STF) file.
     
@@ -313,12 +310,12 @@ def simulate_tf_subsamples(stf_file: Dict[str, Any], config: dict, logger: loggi
                 "tf_filename": tf_filename,
                 "file_size_bytes": tf_size,
                 "sequence_number": sequence_number,
-                "stf_parent": stf_file.get("file_id", "fd6dc0c4-a55a-43fb-a023-3eaccb8dd35a"),  # TODO: how to link to parent STF file?
+                "stf_parent": stf_file.get("filename"),  # Use unique filename as parent identifier
                 "metadata": {
                     "simulation": True,
                     "created_from": stf_file.get('filename'),
                     "tf_size_fraction": tf_size_fraction,
-                    "agent_name": config.get("agent_name", "swf-fastmon-agent"),
+                    "agent_name": agent_name,
                     "state": stf_file.get('state'),
                     "substate": stf_file.get('substate'),
                     "start": stf_file.get('start'),
@@ -340,7 +337,6 @@ def record_tf_file(tf_metadata: Dict[str, Any], config: dict, agent, logger: log
     Record a Time Frame (TF) file in the database using REST API.
     
     Args:
-        stf_file: Parent STF file data dictionary
         tf_metadata: TF metadata dictionary from simulate_tf_subsamples
         config: Configuration dictionary
         agent: BaseAgent instance for API access
@@ -352,7 +348,7 @@ def record_tf_file(tf_metadata: Dict[str, Any], config: dict, agent, logger: log
     try:
         # Prepare FastMonFile data for API
         tf_file_data = {
-            "stf_file": tf_metadata.get("stf_parent", None),
+            "stf_file": tf_metadata.get("stf_parent", None),  # STF filename as parent identifier
             "tf_filename": tf_metadata["tf_filename"],
             "file_size_bytes": tf_metadata["file_size_bytes"],
             "status": FileStatus.REGISTERED,
@@ -361,31 +357,32 @@ def record_tf_file(tf_metadata: Dict[str, Any], config: dict, agent, logger: log
         
         # Create TF file record via FastMonFile API
         tf_file = agent.call_monitor_api('post', '/fastmon-files/', tf_file_data)
-        logger.debug(f"Recorded TF file: {tf_metadata['tf_filename']} -> {tf_file['tf_file_id']}")
+        tf_file_id = tf_file.get('tf_file_id') or tf_file.get('id') or 'unknown'
+        logger.debug(f"Recorded TF file: {tf_metadata['tf_filename']} -> {tf_file_id}")
         return tf_file
-        
+
     except Exception as e:
         logger.error(f"Error recording TF file {tf_metadata['tf_filename']}: {e}")
         return {}
 
 
-def create_sse_tf_message(tf_file: Dict[str, Any], stf_file: Dict[str, Any], agent_name: str) -> Dict[str, Any]:
+def create_tf_message(tf_file: Dict[str, Any], stf_file: Dict[str, Any], agent_name: str) -> Dict[str, Any]:
     """
-    Create an SSE-compatible message for TF file registration notifications.
-    
+    Create a message for TF file registration notifications.
+
     Args:
         tf_file: TF file data from the FastMonFile API
         stf_file: Parent STF file data
         agent_name: Name of the agent sending the message
         
     Returns:
-        SSE message dictionary ready for broadcasting
+        Message dictionary ready for broadcasting
     """
     from datetime import datetime
-    
-    # Extract run number from STF file metadata
-    run_number = stf_file.get('run', {}).get('run_number') if isinstance(stf_file.get('run'), dict) else stf_file.get('run')
-    
+
+    # Extract run number from message data
+    run_number = stf_file.get('run_id')
+
     message = {
         "msg_type": "tf_file_registered",
         "processed_by": agent_name,
@@ -402,10 +399,10 @@ def create_sse_tf_message(tf_file: Dict[str, Any], stf_file: Dict[str, Any], age
     return message
 
 
-def create_sse_status_message(agent_name: str, status: str, message_text: str, run_id: str = None) -> Dict[str, Any]:
+def create_status_message(agent_name: str, status: str, message_text: str, run_id: str = None) -> Dict[str, Any]:
     """
-    Create an SSE-compatible status message for agent notifications.
-    
+    Create a status message for agent notifications.
+
     Args:
         agent_name: Name of the agent sending the message
         status: Status of the operation (e.g., 'started', 'completed', 'error')
@@ -413,7 +410,7 @@ def create_sse_status_message(agent_name: str, status: str, message_text: str, r
         run_id: Optional run identifier
         
     Returns:
-        SSE message dictionary ready for broadcasting
+        Message dictionary ready for broadcasting
     """
     from datetime import datetime
     

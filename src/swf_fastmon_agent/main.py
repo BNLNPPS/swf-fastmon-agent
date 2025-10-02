@@ -1,65 +1,58 @@
 #!/usr/bin/env python3
 """
-File Monitor Agent for SWF Fast Monitoring System.
+Fast Monitoring Agent for SWF Fast Monitoring System.
 
-This agent monitors DAQ directories for newly created STF files, then grabs a fraction of TFs based on configuration,
-and records metadata in the fast monitoring table.
-The TFs are then broadcast to message queues to the fast monitoring clients.
+This agent receives stf_ready messages from the data agent, samples Time Frames (TF) from
+Super Time Frames (STF), and records TF metadata in the fast monitoring database.
+The TFs are then broadcast via ActiveMQ to fast monitoring clients.
 
 Designed to run continuously under supervisord.
 """
 
-import os
 import sys
-import time
 import json
 from datetime import datetime
 
-# Import the centralized logging from swf-common-lib
-#from swf_common_lib.rest_logging import setup_rest_logging
-
-from swf_common_lib.base_agent import BaseAgent
-from swf_fastmon_agent import fastmon_utils
+from swf_common_lib.base_agent import BaseAgent, setup_environment
+import fastmon_utils as fastmon_utils
 
 
 class FastMonitorAgent(BaseAgent):
     """
-    Agent that monitors directories for new STF files, samples TFs and records them in the database. Then broadcasts
-    the selected files to message queues.
+    Agent that receives stf_ready messages, samples TFs from STFs and records them in the database.
+    Then broadcasts the TF notifications via ActiveMQ.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, debug=False):
         """
-        Initialize the file monitor agent.
+        Initialize the fast monitoring agent.
 
         Args:
             config: configuration dictionary containing:
-                - watch_directories: List of directories to monitor
-                - file_patterns: List of file patterns to match (e.g., ['*.stf'])
-                - check_interval: Seconds between directory scans
-                - lookback_time: Minutes to look back for new files
-                - selection_fraction: Fraction of files to select (0.0-1.0)
-                - default_run_number: Run number to use if not detected from filename
-                - base_url: Base URL for constructing file URLs
+                - selection_fraction: Fraction of TFs to select (0.0-1.0)
+                - tf_files_per_stf: Number of TF files to generate per STF
+                - tf_size_fraction: Fraction of STF size for each TF
+                - tf_sequence_start: Starting sequence number for TF files
+            debug: Enable debug logging for heartbeat messages
         """
 
         # Initialize base agent with fast monitoring specific parameters
-        super().__init__(agent_type='fastmon', subscription_queue='epictopic')
+        super().__init__(agent_type='fastmon', subscription_queue='epictopic', debug=debug)
         self.running = True
 
         self.logger.info("Fast Monitor Agent initialized successfully")
 
-        # TODO: Validate config parameters
         self.config = config
-        
+
         # Validate configuration
         fastmon_utils.validate_config(self.config)
         self.logger.info(f"Fast Monitor Agent initialized with config: {self.config}")
-        
+
         # Fast monitoring specific state
-        self.files_processed = 0
-        self.last_scan_time = None
-        self.processing_stats = {'total_files': 0, 'selected_files': 0}
+        self.stf_messages_processed = 0
+        self.last_message_time = None
+        self.processing_stats = {'total_stf_messages': 0, 'total_tf_files_created': 0}
+
 
     def _emulate_stf_registration_and_sampling(self):
         """
@@ -119,79 +112,60 @@ class FastMonitorAgent(BaseAgent):
             self.report_agent_status('ERROR', f'Fast monitoring emulation error: {str(e)}')
             return None
 
+
     def send_tf_file_notification(self, tf_file: dict, stf_file: dict):
         """
-        Send notification to clients about a newly registered TF file via SSE.
-        
+        Send notification to clients about a newly registered TF file via ActiveMQ.
+
         Args:
             tf_file: TF file data from the FastMonFile API
             stf_file: Parent STF file data
         """
         try:
-            # Create SSE-compatible message using utility function
-            message = fastmon_utils.create_sse_tf_message(tf_file, stf_file, self.agent_name)
-            
-            # Send message via monitor's SSE message API
-            self._send_sse_message(message)
-            
-            self.logger.debug(f"Sent TF file notification via SSE: {tf_file.get('tf_filename')}")
-            
+            # Create message using utility function
+            message = fastmon_utils.create_tf_message(tf_file, stf_file, self.agent_name)
+
+            # Send message via ActiveMQ (monitor will forward to SSE clients)
+            self.send_message(self.destination, message)
+
+            self.logger.debug(f"Sent TF file notification via ActiveMQ: {tf_file.get('tf_filename')}")
+
         except Exception as e:
             self.logger.error(f"Failed to send TF file notification: {e}")
 
-    def _send_sse_message(self, message: dict):
-        """
-        Send message through the monitor's SSE message API.
-        
-        Args:
-            message: Message data to broadcast via SSE
-        """
-        try:
-            # Send message to monitor's message API for SSE broadcasting
-            result = self.call_monitor_api('post', '/messages/', message)
-            if result:
-                self.logger.debug(f"SSE message sent successfully: {message.get('msg_type')}")
-            else:
-                self.logger.warning(f"Failed to send SSE message: {message.get('msg_type')}")
-                
-        except Exception as e:
-            self.logger.error(f"Error sending SSE message: {e}")
-            # Don't raise exception to avoid breaking the main processing flow
-
-
     def on_message(self, frame):
         """
-        Handle incoming messages for fast monitoring.
-        This agent can respond to directory scan requests or run lifecycle events.
+        Handle incoming stf_ready messages for fast monitoring.
+        This agent processes STF metadata and creates TF samples.
         """
-        self.logger.info("Fast Monitor Agent received message")
+        # Use base class helper for consistent logging
+        message_data, msg_type = self.log_received_message(frame, {'stf_ready'})
+
         # Update heartbeat on message activity
         self.send_heartbeat()
-        
-        try:
-            message_data = json.loads(frame.body)
-            msg_type = message_data.get('msg_type')
 
-            # A "data_ready" call from the swf-daqsim-agent
-            if msg_type == 'stf_gen':
+        try:
+            # A "stf_ready" call from the data agent
+            if msg_type == 'stf_ready':
                 tf_files = self.sample_timeframes(message_data)
             else:
                 self.logger.warning(f"Ignoring unknown message type {msg_type}", extra={"msg_type": msg_type})
-
-            # Broadcast tf files to clients if any were created
-            # TBD
 
         except Exception as e:
             self.logger.error("Error processing message", extra={"error": str(e)})
             self.report_agent_status('ERROR', f'Message processing error: {str(e)}')
 
-
     def sample_timeframes(self, message_data):
         """
-        Handle DAQ agent generation message and sample STFs into TFs
+        Handle stf_ready message and sample STFs into TFs
         Registers the TFs in the swf-monitor database and notifies clients.
         """
-        self.logger.info("Processing scan request")
+        self.logger.info("Processing stf_ready message")
+
+        # Update message tracking stats
+        self.last_message_time = datetime.now()
+        self.stf_messages_processed += 1
+        self.processing_stats['total_stf_messages'] += 1
 
         tf_files_registered = []
         self.logger.debug(f"Message data received: {message_data}")
@@ -199,7 +173,7 @@ class FastMonitorAgent(BaseAgent):
             self.logger.error("No filename provided in message")
             return tf_files_registered
 
-        tf_subsamples = fastmon_utils.simulate_tf_subsamples(message_data, self.config, self.logger)
+        tf_subsamples = fastmon_utils.simulate_tf_subsamples(message_data, self.config, self.logger, self.agent_name)
 
         # Record each TF file in the FastMonFile table
         # TODO: register in bulk
@@ -210,12 +184,13 @@ class FastMonitorAgent(BaseAgent):
             if tf_file:
                 tf_files_created += 1
             tf_files_registered.append(tf_file)
+
+        # Update TF creation stats
+        self.processing_stats['total_tf_files_created'] += tf_files_created
+
         self.logger.info(f"Registered {tf_files_created} TF subsamples for STF file {message_data.get('filename')}")
         return tf_files_registered
 
-
-
-    
     def start_continuous_monitoring(self):
         """
         Start continuous file monitoring
@@ -238,11 +213,15 @@ class FastMonitorAgent(BaseAgent):
             self.logger.info("Fast Monitor Agent stopped")
 
 
-
 def main():
     """Main entry point for the agent."""
-    # Example configuration - in production, this would come from config file
-    # Watch directory is for testing purposes (continuous mode). In production, the agent should react to swf-data-agent messages
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Fast Monitor Agent')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging for heartbeat messages')
+    args = parser.parse_args()
+
+    # Configuration for message-driven agent
     config = {
         "watch_directories": [
             "/Users/villanueva/tmp/DAQbuffer",
@@ -258,11 +237,10 @@ def main():
         "tf_files_per_stf": 7,  # Number of TF files to generate per STF
         "tf_size_fraction": 0.15,  # Fraction of STF size for each TF
         "tf_sequence_start": 1,  # Starting sequence number for TF files
-        "agent_name": "swf-fastmon-agent",  # Agent name for tracking
     }
 
-    # Create agent with config
-    agent = FastMonitorAgent(config)
+    # Create agent with config and debug flag
+    agent = FastMonitorAgent(config, debug=args.debug)
 
     # Check if we should run in message-driven mode or continuous mode
     mode = os.getenv('FASTMON_MODE', '').lower()
@@ -276,4 +254,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # Setup environment first
+    if not setup_environment():
+        sys.exit(1)
+
     main()
