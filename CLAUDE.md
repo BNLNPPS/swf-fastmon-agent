@@ -4,20 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based fast monitoring agent (`swf-fastmon-agent`) that appears to be part of a larger ePIC streaming 
-workflow testbed ecosystem, including related modules:
-- `swf-testbed` - Testing environment
-- `swf-monitor` - Monitoring system
-- `swf-daqsim-agent` - Data acquisition simulation agent
+This is a Python-based fast monitoring agent (`swf-fastmon-agent`) that is part of the **ePIC streaming workflow testbed** - a distributed scientific computing system for high-energy physics data processing. This agent is one of several optional agent repositories in the larger ecosystem:
 
-The project is designed to work with PostgreSQL databases and ActiveMQ messaging systems.
+**Core Repositories (REQUIRED):**
+- `swf-testbed` - Infrastructure, CLI, and orchestration
+- `swf-monitor` - Django web application for monitoring and REST API
+- `swf-common-lib` - Shared utilities and common code
+
+**Optional Agent Repositories:**
+- `swf-fastmon-agent` - Fast monitoring agent (this repository)
+- `swf-daqsim-agent` - Data acquisition simulation agent
+- `swf-data-agent` - Data management agent
+- `swf-processing-agent` - Processing workflow agent
+
+**Critical**: The three core repositories must exist as siblings in the same parent directory. This agent repository should also be placed as a sibling for proper integration.
+
+The project is designed to work with PostgreSQL databases and ActiveMQ messaging systems, communicating via loosely coupled message-based architecture.
 
 ## Development Environment
 
-- **Python Version**: 3.9
+- **Python Version**: 3.9+
 - **IDE**: PyCharm or VScode (with Black formatter configured)
 - **Code Formatter**: Black
 - **License**: Apache 2.0
+- **Environment Variable**: `SWF_HOME` automatically set to parent directory containing all swf-* repos (via swf-testbed CLI)
 
 ## Project Structure
 
@@ -32,7 +42,7 @@ src/swf_fastmon_agent/   # Agent implementations
 ```
 
 ```
-src/swf-fastmon-client/  # Lightweight monitoring client
+src/swf_fastmon_client/  # Lightweight monitoring client
 ├── __init__.py          # Package initialization
 ├── main.py              # Typer CLI client for TF monitoring
 └── README.md            # Client documentation
@@ -43,21 +53,11 @@ Additional project files:
 ├── manage.py            # Django management script
 ├── requirements.txt     # Python dependencies
 ├── pyproject.toml       # Modern Python packaging configuration
-└── setup_db.py         # Database setup utility
+├── setup_db.py          # Database setup utility
+├── test_client.py       # Client functionality tests
+└── demo_integration.py  # Integration demonstration
 ```
 
-### Core Library Components
-
-- **`models.py`**: Django ORM models implementing the database schema:
-  - `Run` - Data-taking run information with auto-incrementing ID
-  - `StfFile` - Super Time Frame file metadata with UUID primary key
-  - `Subscriber` - Message queue subscribers with fraction-based dispatch
-  - `MessageQueueDispatch` - Message dispatch logging with success tracking
-  - `FileStatus` - Django TextChoices enum for file processing status
-
-- **`database.py`**: Database utilities and operations layer (implementation details TBD)
-- **`settings.py`**: Django configuration for the database app
-- **`manage.py`**: Django's command-line utility for administrative tasks
 
 ### Agent Components
 
@@ -73,20 +73,22 @@ Additional project files:
 - **`fastmon_utils.py`**: Core utility functions including:
   - File discovery and time-based filtering
   - Random file selection algorithms
-  - Database operations for STF file recording
+  - Database operations for STF file recording via REST API
   - Run number extraction from filenames
   - Checksum calculation and validation
-  - ActiveMQ message broadcasting (placeholder implementation)
+  - ActiveMQ message broadcasting to client queues
+  - TF (Time Frame) file simulation and sampling from STF files
 
 ### Client Components
 
-- **`src/swf-fastmon-client/main.py`**: Lightweight monitoring client (`FastMonitoringClient`) that:
+- **`src/swf_fastmon_client/main.py`**: Lightweight monitoring client (`FastMonitoringClient`) that:
   - Receives TF metadata from ActiveMQ using STOMP protocol
   - Stores metadata in local SQLite database for remote monitoring
   - Provides Typer-based CLI with `start`, `status`, and `init-db` commands
   - Supports SSL connections and flexible ActiveMQ configuration
   - Designed for minimal infrastructure requirements and portability
   - Enables remote monitoring of ePIC data acquisition with local data persistence
+  - **Future Development**: Will become a standalone application separate from the agent repository
 
 ## Dependencies and External Systems
 
@@ -96,13 +98,22 @@ This project integrates with:
 - **Agent framework**: Secrets/credentials managed through `secrets.yaml`, `credentials.json`, `config.ini`
 
 ### Python Dependencies
+**Core Dependencies:**
 - **Django**: Web framework with ORM for database operations (>=4.2, <5.0)
 - **psycopg**: Modern PostgreSQL adapter for Python (>=3.2.0)
 - **psycopg2-binary**: Legacy PostgreSQL adapter for Python (>=2.9.0)
+- **typer**: Command-line interface framework (>=0.9.0)
+- **stomp.py**: STOMP protocol client for ActiveMQ (>=8.1.0)
+
+**Development Dependencies:**
 - **pytest**: Testing framework (>=7.0.0)
 - **pytest-django**: Django testing integration (>=4.5.0)
+- **pytest-cov**: Test coverage reporting (>=4.0.0)
 - **black**: Code formatter (>=22.0.0)
 - **flake8**: Code linter (>=4.0.0)
+- **isort**: Import sorting utility (>=5.10.0)
+- **mypy**: Static type checking (>=1.0.0)
+- **django-stubs**: Django type stubs (>=1.13.0)
 
 ### Database Environment Variables
 Django settings support standard environment variables:
@@ -144,29 +155,98 @@ With Django framework in place, use these standard commands:
 ### Testing and Code Quality
 - `python manage.py test` - Run Django tests
 - `python manage.py test swf_fastmon_agent` - Run specific app tests
-- `pytest` - Run tests (alternative with pytest-django)
-- `black .` - Format code
-- `flake8 .` - Lint code
+- `pytest` - Run all tests using pytest-django
+- `pytest src/swf_fastmon_agent/tests/test_fastmon_utils.py` - Run specific test module
+- `pytest -vs -q src/swf_fastmon_agent/tests/test_fastmon_utils.py` - Run with verbose output
+- `black .` - Format code with Black
+- `flake8 .` - Lint code with Flake8
+- `isort .` - Sort imports
+- `mypy src/` - Static type checking
 
 ### Database Setup
 - `python setup_db.py` - Custom database setup utility
 
 ### Agent Operations
 - `python -m swf_fastmon_agent.main` - Run file monitoring agent
-- Configure via environment variables:
-  - `FASTMON_WATCH_DIRS` - Comma-separated directories to monitor
-  - `FASTMON_FRACTION` - Fraction of files to select (0.0-1.0)
-  - `FASTMON_INTERVAL` - Check interval in seconds
-  - `FASTMON_LOOKBACK` - Lookback time in minutes
 - Use supervisord for deployment with appropriate configuration
 
 ### Client Operations
-Fast monitoring client commands (from `src/swf-fastmon-client/`):
-- `python main.py init-db --db /path/to/fastmon.db` - Initialize SQLite database
-- `python main.py start --host localhost --port 61613` - Start monitoring client
-- `python main.py status --run 12345` - View run statistics
-- `python main.py start --ssl --ca-certs /path/to/ca.pem` - Start with SSL
-- Client dependencies: `pip install typer stomp.py`
+Fast monitoring client commands (from `src/swf_fastmon_client/`):
+- `python -m swf_fastmon_client.main start` - Start monitoring client with default settings
+- `python -m swf_fastmon_client.main start --host localhost --port 61612` - Start with custom ActiveMQ settings
+- `python -m swf_fastmon_client.main start --ssl --ca-certs /path/to/ca.pem` - Start with SSL
+- `python -m swf_fastmon_client.main status` - Show client configuration
+- `python -m swf_fastmon_client.main version` - Show version information
+- Client dependencies are included in project requirements (typer, stomp.py)
+
+### Continuous Integration
+- **GitHub Actions**: Automated testing workflow configured in `.github/workflows/test-fastmon-utils.yml`
+- **Python Version**: Tests run on Python 3.11 in CI environment
+- **Test Execution**: `pytest -vs -q src/swf_fastmon_agent/tests/test_fastmon_utils.py`
+- **Environment**: Uses `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` to avoid external plugin conflicts
+
+## Fast Monitoring Client Integration
+
+### Agent-Client Messaging
+The FastMon agent now sends real-time notifications to clients when TF files are registered:
+
+#### Message Flow
+1. **Agent Processing**: When STF files are processed and TF subsamples created
+2. **Database Recording**: TF files are recorded in the FastMonFile table via REST API
+3. **Message Broadcasting**: Agent sends notifications to `/queue/fastmon_client` queue
+4. **Client Display**: Client receives and displays TF file information in formatted terminal output
+
+#### Message Format
+```json
+{
+  "msg_type": "tf_file_registered",
+  "tf_file_id": "uuid",
+  "tf_filename": "run001_stf_001_tf_001.tf",
+  "file_size_bytes": 15728640,
+  "stf_filename": "run001_stf_001.stf",
+  "run_number": 1,
+  "status": "registered",
+  "timestamp": "2025-08-21T10:30:00Z",
+  "agent_name": "swf-fastmon-agent"
+}
+```
+
+#### Client Features
+- **Real-time monitoring**: Live display of TF file registrations
+- **Formatted output**: Color-coded status, human-readable file sizes
+- **Statistics tracking**: Per-run TF counts, total data processed
+- **Graceful shutdown**: Ctrl+C handling with summary display
+- **Configurable connection**: SSL support, custom ActiveMQ settings
+
+#### Testing and Demo
+- `python test_client.py` - Basic functionality tests
+- `python demo_integration.py` - Integration demonstration
+- Both agent and client can run independently for testing
+
+## Testing Infrastructure
+
+### Test Organization
+The project includes comprehensive test coverage:
+
+```
+src/swf_fastmon_agent/tests/
+├── __init__.py              # Test package initialization
+├── README.md                # Testing documentation
+├── test_fastmon_utils.py    # Core utility function tests
+└── test_api_conversion.py   # API conversion and integration tests
+```
+
+### Test Modules
+- **`test_fastmon_utils.py`**: Tests core FastMon utilities including file discovery, filtering, and database operations
+- **`test_api_conversion.py`**: Tests REST API integration and data conversion between agent and monitor systems
+- **`test_client.py`**: Tests client functionality and integration with ActiveMQ
+- **`demo_integration.py`**: Demonstrates end-to-end integration between agent and client
+
+### Test Execution
+Tests are integrated with both local development and CI/CD:
+- **Local execution**: `pytest src/swf_fastmon_agent/tests/`
+- **CI execution**: Automated via GitHub Actions on push/PR
+- **Specific tests**: `pytest -vs -q src/swf_fastmon_agent/tests/test_fastmon_utils.py`
 
 ## Related Projects
 
@@ -182,6 +262,38 @@ This agent is part of a multi-module scientific workflow system. Dependencies on
 - **Core repository structure**: Ensure swf-testbed, swf-monitor, swf-common-lib, and swf-fastmon-agent are siblings
 - **Database connections**: Verify PostgreSQL is running and accessible
 - **ActiveMQ connectivity**: Check message broker is running on expected ports
+
+### API Integration Issues (Recently Fixed)
+
+The FastMon agent integrates with the swf-monitor Django REST API. Several issues were identified and resolved:
+
+#### 1. Field Name Migration Mismatch
+**Issue**: After Django migration 0016, the `file_url` field was renamed to `stf_filename`, but the agent was still using the old parameter.
+**Symptoms**: API timeouts when querying for existing files
+**Solution**: Updated `fastmon_utils.py` to use `stf_filename` parameter in API queries
+
+#### 2. Missing Django REST Framework Filter Support
+**Issue**: The `StfFileViewSet` lacked proper filtering configuration for query parameters
+**Symptoms**: API timeouts when filtering by `stf_filename`
+**Solution**: Added `DjangoFilterBackend` and `filterset_fields` to the ViewSet in swf-monitor
+
+#### 3. Status Value Case Mismatch
+**Issue**: Django model expects lowercase status values (`"registered"`) but agent was sending uppercase (`"REGISTERED"`)
+**Symptoms**: HTTP 400 errors with "not a valid choice" messages
+**Solution**: Updated `FileStatus` constants in `fastmon_utils.py` to match Django model choices:
+```python
+class FileStatus:
+    REGISTERED = 'registered'  # was 'REGISTERED'
+    PROCESSING = 'processing'  # was 'PROCESSING'
+    PROCESSED = 'processed'    # was 'PROCESSED'
+    FAILED = 'failed'         # was 'ERROR'
+    DONE = 'done'             # was 'ARCHIVED'
+```
+
+#### 4. Response Format Handling
+**Issue**: Agent code assumed paginated API responses `{"results": [...]}` but API sometimes returns direct lists
+**Symptoms**: `'list' object has no attribute 'get'` errors
+**Solution**: Added robust response handling for both formats in `get_or_create_run()` and `record_file()` functions
 
 ### Diagnostic Commands
 ```bash
@@ -226,3 +338,87 @@ ls -la $SWF_PARENT_DIR/swf-testbed $SWF_PARENT_DIR/swf-monitor $SWF_PARENT_DIR/s
 - For API and backend logic, assert on status codes, database state, and required keys/fields, not on full response text.
 - This approach ensures your tests are resilient to minor UI or output changes, reducing maintenance and avoiding false failures.
 - Always run tests using the provided scripts (`./run_tests.sh` or `./run_all_tests.sh`) to guarantee the correct environment and configuration.
+
+## Multi-Repository Development Workflow
+
+### Infrastructure Branching Strategy
+
+This agent repository participates in the coordinated multi-repository development workflow:
+
+- **Always use infrastructure branches**: `infra/baseline-v1`, `infra/baseline-v2`, etc.
+- **Create coordinated branches** with the same name across all affected repositories
+- **Document changes** through descriptive commit messages, not branch names
+- **Never push directly to main** - always use branches and pull requests
+
+### Current Infrastructure Versions
+
+**CURRENT STATUS**: Core repositories are on coordinated `infra/baseline-v3` branches with:
+- Virtual environment documentation updates (CRITICAL warnings added)
+- Top-level CLAUDE.md moved to swf-testbed/CLAUDE-toplevel.md with symlink
+- Directory verification guidance added
+
+Check for existing infrastructure branches:
+```bash
+# Check all repos for current infrastructure baseline
+cd $SWF_PARENT_DIR
+for repo in swf-testbed swf-monitor swf-common-lib swf-fastmon-agent; do
+  echo "=== $repo ==="
+  cd $repo && git branch -a | grep infra && cd ..
+done
+```
+
+### Coordination Commands
+
+```bash
+# Create coordinated infrastructure branch across repos
+cd $SWF_PARENT_DIR
+for repo in swf-testbed swf-monitor swf-common-lib swf-fastmon-agent; do
+  cd $repo && git checkout -b infra/baseline-vN && cd ..
+done
+
+# Run comprehensive tests across all repositories
+cd swf-testbed && ./run_all_tests.sh
+```
+
+### Cross-Repository Changes
+
+1. **Plan infrastructure phase**: Identify all repositories that need changes
+2. **Create coordinated branches**: Same `infra/baseline-vN` across affected repos
+3. **Work systematically**: Make changes across repositories as needed
+4. **Test integration**: Run `./run_all_tests.sh` from swf-testbed before merging
+5. **Coordinate merges**: Merge pull requests simultaneously across repositories
+
+### Git Branch Management (Critical for Claude)
+
+- **ALWAYS use `git push -u origin branch-name` on first push** - this sets up tracking
+- After pushing, verify tracking with `git branch -vv` - should show `[origin/branch-name]`
+- If tracking is missing, fix with: `git branch --set-upstream-to=origin/branch-name branch-name`
+- VS Code "Publish branch" button indicates missing tracking - resolve immediately
+
+## Infrastructure Services
+
+### Two Deployment Modes
+
+**Development Mode** (Docker-managed infrastructure):
+- Managed via `swf-testbed start`, `stop`, `status` commands
+- PostgreSQL and ActiveMQ run in Docker containers
+- Best for development and testing
+
+**System Mode** (System-managed infrastructure):
+- Managed via `swf-testbed start-local`, `stop-local`, `status-local` commands
+- Uses system-level PostgreSQL and ActiveMQ services (e.g., on production servers)
+- Best for production deployment
+
+### Service Status Checking
+
+From swf-testbed repository:
+```bash
+# Docker mode
+swf-testbed status
+
+# System mode
+swf-testbed status-local
+
+# Comprehensive system readiness check
+python report_system_status.py
+```
