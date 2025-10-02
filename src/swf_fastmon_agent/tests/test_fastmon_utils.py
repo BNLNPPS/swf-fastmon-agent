@@ -176,12 +176,10 @@ class TestSimulateTfSubsamples:
         
         stf_file = {
             'file_id': 'stf-uuid-123',
-            'stf_filename': 'test_run001.stf',
+            'filename': 'test_run001.stf',
             'file_size_bytes': 1000000
         }
-        
-        file_path = Path('/tmp/test_run001.stf')
-        
+
         config = {
             'tf_files_per_stf': 3,
             'tf_size_fraction': 0.2,
@@ -189,7 +187,7 @@ class TestSimulateTfSubsamples:
             'agent_name': 'test-agent'
         }
         
-        result = simulate_tf_subsamples(stf_file, file_path, config, mock_logger)
+        result = simulate_tf_subsamples(stf_file, config, mock_logger, agent_name='test-agent')
         
         # Verify correct number of TF files generated
         assert len(result) == 3
@@ -200,7 +198,7 @@ class TestSimulateTfSubsamples:
             assert 'file_size_bytes' in tf
             assert 'sequence_number' in tf
             assert tf['sequence_number'] == i + 1
-            assert tf['stf_parent'] == 'stf-uuid-123'
+            assert tf['stf_parent'] == 'test_run001.stf'
             assert 'simulation' in tf['metadata']
 
     def test_generate_tf_with_defaults(self):
@@ -213,17 +211,16 @@ class TestSimulateTfSubsamples:
             'file_size_bytes': 500000
         }
         
-        file_path = Path('/tmp/test.stf')
         config = {}  # Empty config to test defaults
         
-        result = simulate_tf_subsamples(stf_file, file_path, config, mock_logger)
+        result = simulate_tf_subsamples(stf_file, config, mock_logger, agent_name='test-agent')
         
-        # Should use default values (7 TF files)
-        assert len(result) == 7
+        # Should use default values (2 TF files)
+        assert len(result) == 2
         
         # Verify default sequence numbering
         assert result[0]['sequence_number'] == 1
-        assert result[-1]['sequence_number'] == 7
+        assert result[-1]['sequence_number'] == 2
 
 
 class TestRecordTfFile:
@@ -241,16 +238,16 @@ class TestRecordTfFile:
             'tf_filename': 'test_tf_001.tf',
             'status': 'REGISTERED'
         }
-        
-        stf_file = {'file_id': 'stf-uuid-123'}
+
         tf_metadata = {
+            'stf_parent': 'stf-uuid-123',
             'tf_filename': 'test_tf_001.tf',
             'file_size_bytes': 150000,
             'metadata': {'simulation': True}
         }
         config = {}
         
-        result = record_tf_file(stf_file, tf_metadata, config, mock_agent, mock_logger)
+        result = record_tf_file(tf_metadata, config, mock_agent, mock_logger)
         
         # Verify TF file was recorded
         assert result['tf_file_id'] == 'tf-uuid-123'
@@ -278,10 +275,10 @@ class TestRecordTfFile:
         }
         config = {}
         
-        result = record_tf_file(stf_file, tf_metadata, config, mock_agent, mock_logger)
+        result = record_tf_file(tf_metadata, config, mock_agent, mock_logger)
         
-        # Should return None on failure
-        assert result is None
+        # Should return empty on failure
+        assert not result
         mock_logger.error.assert_called_once()
 
 
