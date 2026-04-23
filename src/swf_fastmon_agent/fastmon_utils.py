@@ -11,7 +11,13 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any
+from urllib.parse import urlparse
 
+try:
+    from XRootD import client
+    HAS_XROOTD = True
+except ImportError:
+    HAS_XROOTD = False
 
 # File status constants (matching Django FileStatus choices)
 class FileStatus:
@@ -280,7 +286,7 @@ def simulate_tf_subsamples(stf_file: Dict[str, Any], config: dict, logger: loggi
     Simulate creation of Time Frame (TF) subsamples from a Super Time Frame (STF) file.
     
     Args:
-        stf_file: STF data dictionary (follows the keys from daq agent)
+        stf_file: STF data dictionary (follows the keys from data agent)
         config: Configuration dictionary
         logger: Logger instance
         
@@ -296,12 +302,46 @@ def simulate_tf_subsamples(stf_file: Dict[str, Any], config: dict, logger: loggi
         stf_size = stf_file.get("size_bytes", 0)
         # filename without extension
         base_filename = stf_file.get("filename", "unknown").rsplit('.', 1)[0]
+
+        tf_base_url = config.get("tf_base_url", "")
         
         for i in range(tf_files_per_stf):
             sequence_number = tf_sequence_start + i
             
             # Generate TF filename based on STF filename
             tf_filename = f"{base_filename}_tf_{sequence_number:03d}.tf"
+
+            if tf_base_url:
+                parsed_url = urlparse(tf_base_url)
+                if parsed_url.path:
+                    tf_filename = f"{tf_base_url}/{tf_filename}"
+                else:
+                    tf_filename = construct_file_url(Path(tf_filename), tf_base_url)
+                if HAS_XROOTD: 
+                    # create empty TF file
+                    try:
+                        parsed = urlparse(tf_filename)
+                        f = client.File()
+                        try:
+                            # To avoid a "permission denied" error, perform the file operation locally by using the path (= parsed.path) without the scheme and netloc.
+                            status, _ = f.open(
+                                parsed.path,  # tf_filename
+                                client.flags.OpenFlags.NEW
+                                | client.flags.OpenFlags.WRITE
+                                | client.flags.OpenFlags.MAKEPATH
+                            )
+                            if not status.ok:
+                                raise RuntimeError(f"Failed to create TF file = {tf_filename}, status = {status.message}")
+                        finally:
+                            try:
+                                f.close()
+                            except Exception:
+                                # Suppress close errors to preserve original exceptions
+                                pass
+                    except Exception as e:
+                        logger.exception("An exception occurred while creating the TF file '%s'", tf_filename)
+
+
             
             # Calculate TF file size as fraction of STF size with some gaussian randomness
             tf_size = int(stf_size * tf_size_fraction * random.gauss(1.0, 0.1))
@@ -311,8 +351,8 @@ def simulate_tf_subsamples(stf_file: Dict[str, Any], config: dict, logger: loggi
                 "tf_filename": tf_filename,
                 "file_size_bytes": tf_size,
                 "sequence_number": sequence_number,
-                "stf_file_id": stf_file.get("file_id"),  # UUID for foreign key reference
-                "stf_parent": stf_file.get("filename"),  # Keep filename for reference
+                "stf_file_id": stf_file.get("file_id"), 
+                "stf_filename": stf_file.get("filename"),  # Parent STF filename used by swf-monitor to resolve FastMonFile.stf_file.
                 "metadata": {
                     "simulation": True,
                     "created_from": stf_file.get('filename'),
@@ -350,7 +390,7 @@ def record_tf_file(tf_metadata: Dict[str, Any], config: dict, agent, logger: log
     try:
         # Prepare FastMonFile data for API
         tf_file_data = {
-            "stf_file": tf_metadata.get("stf_file_id"),  # UUID foreign key to StfFile
+            "stf_file": tf_metadata.get("stf_filename"),  # swf-monitor resolves FastMonFile.stf_file by StfFile.stf_filename.
             "tf_filename": tf_metadata["tf_filename"],
             "file_size_bytes": tf_metadata["file_size_bytes"],
             "status": FileStatus.REGISTERED,
@@ -391,7 +431,7 @@ def create_tf_message(tf_file: Dict[str, Any], stf_file: Dict[str, Any], agent_n
         "tf_file_id": tf_file.get('tf_file_id'),
         "tf_filename": tf_file.get('tf_filename'),
         "file_size_bytes": tf_file.get('file_size_bytes'),
-        "stf_filename": stf_file.get('stf_filename'),
+        "stf_filename": stf_file.get('stf_filename') or stf_file.get('filename'),
         "run_number": run_number,
         "status": tf_file.get('status'),
         "timestamp": datetime.now().isoformat(),

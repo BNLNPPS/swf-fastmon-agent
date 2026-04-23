@@ -14,18 +14,38 @@ import signal
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlparse
 
 import typer
 import requests
 
+try:
+    from XRootD import client
+    HAS_XROOTD = True
+except ImportError:
+    HAS_XROOTD = False
+
+def expand_all(s: Optional[str], max_iter: int = 10) -> Optional[str]:
+    """
+    Recursively expands environment variables in a string.
+    """
+    # Immediately return if s is None or an empty string
+    if not s:
+        return s
+    for _ in range(max_iter):
+        new = os.path.expandvars(s)
+        if new == s:
+            return new
+        s = new
+    return s
 
 class FastMonitoringClient:
     """
     Client that receives TF file notifications via SSE and displays monitoring information.
     """
 
-    def __init__(self, monitor_base_url=None, api_token=None):
+    def __init__(self, monitor_base_url=None, api_token=None, xrootd_target_dir=None):
         """Initialize the fast monitoring client."""
         # Setup environment variables from ~/.env file if present
         self._setup_environment()
@@ -37,7 +57,8 @@ class FastMonitoringClient:
         # Monitor configuration
         self.monitor_base_url = monitor_base_url or os.getenv('SWF_MONITOR_URL', 'http://localhost:8002').rstrip('/')
         self.api_token = api_token or os.getenv('SWF_API_TOKEN')
-        
+        self.xrootd_target_dir = xrootd_target_dir or expand_all(os.getenv('FASTMON_CLIENT_XROOTD_TARGET_DIR'))
+
         if not self.api_token:
             raise ValueError("SWF_API_TOKEN environment variable is required")
         
@@ -63,6 +84,11 @@ class FastMonitoringClient:
         
         print("🔧 Fast Monitoring Client initialized")
         print(f"   Monitor URL: {self.monitor_base_url}")
+        if self.xrootd_target_dir:
+            print(f"   XRootD downloads: enabled")
+            print(f"   XRootD target: {self.xrootd_target_dir}")
+        else:
+            print(f"   XRootD downloads: disabled")
         print(f"   Token prefix: {self.api_token[:12]}..." if len(self.api_token) >= 12 else "   Token: [short token]")
 
     def _setup_environment(self):
@@ -239,6 +265,7 @@ class FastMonitoringClient:
             self._display_tf_notification(
                 tf_filename, file_size, stf_filename, run_number, status, timestamp
             )
+            self._download_tf(tf_filename)
 
             self.logger.debug(f"Processed TF file notification: {tf_filename}")
 
@@ -285,6 +312,39 @@ class FastMonitoringClient:
         except Exception as e:
             # Fallback to simple display if formatting fails
             print(f"[{timestamp}] TF: {tf_filename} | Size: {file_size} | STF: {stf_filename} | Run: {run_number} | Status: {status}")
+
+    def _download_tf(self, tf_filename: str) -> None:
+        """
+        Downloads a timeframe (TF) file to the local target directory using the XRootD client.
+
+        If the XRootD client is not installed or available, the download is skipped.
+
+        Args:
+            tf_filename (str): The source URL or path of the TF file to be downloaded.
+        """
+        try: 
+            if not self.xrootd_target_dir:
+                self.logger.debug("XRootD download skipped: no target directory configured")
+                return
+
+            if not HAS_XROOTD: 
+                print("XRootD is not available. Skipping TF file download.")
+                return
+
+            parsed = urlparse(tf_filename)
+            # TODO: Handle local filesystem `file://` paths 
+            if not 'root' in parsed.scheme:
+                raise RuntimeError(f"Protocol in {tf_filename} not supported. Only root is supported at this time")
+            fs = client.FileSystem(f'{parsed.scheme}://{parsed.netloc}')
+            #src = parsed.path
+            src = tf_filename
+            target = f'{self.xrootd_target_dir}/{PurePosixPath(parsed.path).name}'
+            print(f"download TF file. source: {src}, target: {target}")
+            status, _ = fs.copy(src, target)
+            if not status.ok:
+                raise ValueError(f"Failed to download TF file = {tf_filename}, target = {target}, status = {status.message}")
+        except Exception as e:
+            self.logger.error(f"An exception occurred while downloading the TF file: {e}")
 
     def display_summary(self):
         """Display summary statistics."""
@@ -352,7 +412,8 @@ def start(
     monitor_url: Optional[str] = typer.Option(None, "--monitor-url", "-m", help="Monitor base URL (Overwrites SWF_MONITOR_URL)"),
     api_token: Optional[str] = typer.Option(None, "--api-token", "-t", help="API token for authentication"),
     message_types: Optional[str] = typer.Option(None, "--message-types", help="Filter by message types (comma-separated)"),
-    agents: Optional[str] = typer.Option(None, "--agents", help="Filter by agent names (comma-separated)")
+    agents: Optional[str] = typer.Option(None, "--agents", help="Filter by agent names (comma-separated)"), 
+    xrootd_target_dir: Optional[str] = typer.Option(None, "--xrootd-target-dir", help="Target directory for downloaded TF files via XRootD"),
 ):
     """Start the fast monitoring client with SSE streaming."""
     
@@ -365,9 +426,10 @@ def start(
     if agents:
         agent_list = [a.strip() for a in agents.split(',')]
 
+
     try:
         # Create and start client
-        client = FastMonitoringClient(monitor_base_url=monitor_url, api_token=api_token)
+        client = FastMonitoringClient(monitor_base_url=monitor_url, api_token=api_token, xrootd_target_dir=xrootd_target_dir)
         client.start_monitoring(msg_types=msg_types, agents=agent_list)
     except ValueError as e:
         typer.echo(f"Configuration error: {e}", err=True)
